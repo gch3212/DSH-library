@@ -1,5 +1,10 @@
 # 更新记录
 
+## 0.5.4 — 2026-11-21 · tarball 安装器改成真的重装
+
+- **修掉一个让人以为改代码没生效的坑**：`pnpm` 判断要不要重装只看 `file:` 路径和版本号，同名同版本的 tarball 内容变了它也不动，于是 `scripts/install-tarball.ps1` 跑完显示成功、`node_modules` 里还是旧内容。现在脚本第 2、3 步会无条件清掉 profile 里那份（链接用 `rmdir` 摘、拷贝直接删）和 lockfile 里该包的 importer / packages / snapshots 记录，再 `pnpm add` 重新落盘。改完代码重跑一次就一定生效。
+- **提醒**：profile 里那份是拷贝，改完仓库代码必须重跑安装器，否则 DSH 加载的还是装进去的那份。
+
 ## 0.5.3 — 2026-11-21 · 改名 DSH-library，配一张市场卡片图标
 
 - **包名从 `dsh-local-library` 改成 `DSH-library`**：cordis 实例 id、profile 依赖与 `dsh.profile.bundles`、客户端模块 id、两个安装脚本全部跟着改。上游那份也叫 `dsh-local-library`，同名会在市场里撞成两行、也会被 `pnpm` 当成同一个包互相替换。数据目录仍是 `$DSH_HOME\local-library`，**不需要迁移任何文件**。

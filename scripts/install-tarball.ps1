@@ -147,8 +147,10 @@ if (-not (Test-Path -LiteralPath $Tarball)) {
 }
 Ok "$Tarball ($((Get-Item -LiteralPath $Tarball).Length) 字节)"
 
-# 2) 摘掉上一次留下的 junction/symlink，否则 pnpm 会认为"已经是最新的"而不换成拷贝
-Step "2/4 检查 profile 里现有的这一份"
+# 2) 先彻底拿掉 profile 里现有的这一份。
+#    pnpm 判断"要不要重装"只看 file: 路径和版本号：同名同版本的 tarball 内容变了它也不动，
+#    所以这里必须无条件清掉（链接用 rmdir 摘，拷贝直接删），下一步才真的重新落盘。
+Step "2/4 清掉 profile 里现有的这一份"
 if (Test-Path -LiteralPath $LinkPath) {
   $item = Get-Item -LiteralPath $LinkPath -Force
   $isLink = ($item.LinkType -eq 'Junction') -or ($item.LinkType -eq 'SymbolicLink') -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)
@@ -157,23 +159,30 @@ if (Test-Path -LiteralPath $LinkPath) {
     if (Test-Path -LiteralPath $LinkPath) { Fail "摘不掉链接 $LinkPath（可能被占用）。请先关掉 DSH Desktop 再试。" }
     Ok '摘掉了旧的 junction（只删链接，没动它指向的目录）'
   } else {
-    Skip '已经是拷贝，pnpm 会按新 tarball 更新'
+    Remove-Item -LiteralPath $LinkPath -Recurse -Force
+    if (Test-Path -LiteralPath $LinkPath) { Fail "删不掉 $LinkPath（可能被占用）。请先关掉 DSH Desktop 再试。" }
+    Ok '删掉了旧的拷贝'
   }
 } else {
   Skip 'profile 里还没有这个包'
 }
 
-# 3) 清掉 lock 里遗留的 link 解析结果（否则 pnpm add file: 会说 Already up to date 而不换）
-Step "3/4 清理 lockfile 里指向本地目录的旧解析"
+# 3) 清掉 lock 里这个包的旧解析结果（importer 三条 + packages/snapshots 的包块），
+#    否则 pnpm add 会说 Already up to date 而不重新装。
+Step "3/4 清理 lockfile 里这个包的旧解析"
 if (Test-Path -LiteralPath $LockPath) {
   $lockText = Get-Content -LiteralPath $LockPath -Raw
-  $linkPattern = '(?m)^ {6}' + [regex]::Escape($PackageName) + ':\r?\n +specifier: [^\n]*\r?\n +version: link:[^\n]*\r?\n'
-  if ($lockText -match $linkPattern) {
-    $lockText = [regex]::Replace($lockText, $linkPattern, '')
+  $name = [regex]::Escape($PackageName)
+  $importerPattern = '(?m)^ {6}' + $name + ':\r?\n(?: {8}[^\n]*\r?\n)*'
+  $packagePattern = '(?m)^ {2}' + $name + '@[^\n]*:\r?\n(?: {4}[^\n]*\r?\n)*'
+  $before = $lockText.Length
+  $lockText = [regex]::Replace($lockText, $importerPattern, '')
+  $lockText = [regex]::Replace($lockText, $packagePattern, '')
+  if ($lockText.Length -ne $before) {
     Set-Content -LiteralPath $LockPath -Value $lockText -NoNewline -Encoding utf8
-    Ok '已移除 lock 里 version: link: 的那一条'
+    Ok "已移除 lock 里 $($before - $lockText.Length) 个字符的旧记录"
   } else {
-    Skip 'lock 里没有 link 形式的解析结果'
+    Skip 'lock 里没有这个包的记录'
   }
 } else {
   Skip '没有 pnpm-lock.yaml'
