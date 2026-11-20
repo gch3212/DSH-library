@@ -1,5 +1,11 @@
 # 更新记录
 
+## 0.5.3 — 2026-11-21 · 改名 DSH-library，配一张市场卡片图标
+
+- **包名从 `dsh-local-library` 改成 `DSH-library`**：cordis 实例 id、profile 依赖与 `dsh.profile.bundles`、客户端模块 id、两个安装脚本全部跟着改。上游那份也叫 `dsh-local-library`，同名会在市场里撞成两行、也会被 `pnpm` 当成同一个包互相替换。数据目录仍是 `$DSH_HOME\local-library`，**不需要迁移任何文件**。
+- **新增市场卡片图标** `assets/icon-180.png` / `assets/icon-512.png`（由原 `icon.svg` 的几何形状重绘）。插件市场只认 GitHub 托管的位图，SVG 会被拒；`package.json` 的 `icon` 现在指向 PNG。
+- README / README.en.md：安装段与新包名对齐，补「为什么改名」与「数据目录没动」两段。
+
 ## 0.5.2 — 2026-11-20 · 加一条不依赖 git 的安装路径
 
 功能没动，只多一种装法。

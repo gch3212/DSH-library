@@ -80,7 +80,7 @@ try {
   process.exit(1)
 }
 check('脚本调用了 __ModuleLoader__.load', Boolean(loaded), JSON.stringify(loaded))
-check('模块 id 是 dsh-local-library', loaded && loaded.id === 'dsh-local-library', String(loaded && loaded.id))
+check('模块 id 是 DSH-library', loaded && loaded.id === 'DSH-library', String(loaded && loaded.id))
 
 let moduleExports
 try {

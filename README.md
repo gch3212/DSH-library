@@ -1,10 +1,10 @@
-# dsh-local-library
+# DSH Library · 本地资料库
+
+<img src="assets/icon-180.png" width="96" height="96" alt="DSH Library">
 
 中文 · [English](README.en.md) · [更新记录](CHANGELOG.md)
 
-[![test](https://github.com/gch3212/DSH-library/actions/workflows/test.yml/badge.svg)](https://github.com/gch3212/DSH-library/actions/workflows/test.yml)
-
-> **本仓库是 [Fucaplos/dsh-local-library](https://github.com/Fucaplos/dsh-local-library) 的改造版（0.5.0）**：在原版「跨会话共享的本地资料库」上加了一个**工作台首页侧边栏面板**，把库改造成**像资源管理器一样能建文件夹、改名、写备注**，支持**拖入整个目录树并保留层级**，并加了**最近访问**与**本地工作生成文件**两个视图（可以一键定位回产生它的那个对话）。原版的设计、抽取器、检索打分全部保留，`index.json` 从 v1 自动升级到 v2，老数据不丢。
+> **本仓库是 [Fucaplos/dsh-local-library](https://github.com/Fucaplos/dsh-local-library) 的改造版（0.5.x）**：在原版「跨会话共享的本地资料库」上加了一个**工作台首页侧边栏面板**，把库改造成**像资源管理器一样能建文件夹、改名、写备注**，支持**拖入整个目录树并保留层级**，并加了**最近访问**与**本地工作生成文件**两个视图（可以一键定位回产生它的那个对话）。原版的设计、抽取器、检索打分全部保留，`index.json` 从 v1 自动升级到 v2，老数据不丢。
 
 给 DSH Desktop 用的**本地资料库**插件：一个跨会话共享的文件柜。文件留在本机，不上传任何云端；每个新对话都能通过四个工具（`library_list` / `library_search` / `library_read` / `library_save`）检索、读取、保存，模型自己会先来查。
 
@@ -51,11 +51,11 @@ pwsh -File install.ps1
 pwsh -File install.ps1 -ProfileRoot 'D:\my-dsh\harness\profiles\desktop'
 ```
 
-脚本只做三件事，改文件前都会先备份成 `*.bak-dsh-local-library-<时间戳>`：
+脚本只做三件事，改文件前都会先备份成 `*.bak-DSH-library-<时间戳>`：
 
-1. **建 junction**：`profiles\<name>\node_modules\dsh-local-library` → 本仓库。DSH 靠包名解析插件，junction 让包名成立，同时代码留在工作区、改完重启即生效。
-2. **登记到 `dsh.profile.bundles`**：把 `"dsh-local-library"` 加进 `profiles\<name>\package.json` 的 `dsh.profile.bundles` 数组——这是 DSH 加载插件的清单，插件自己的 `cordis.patch.yml`（`dsh.bundle.patch`）由 DSH 自动套用，**不需要**往 profile 的 `cordis.patch.yml` 写东西。旧版脚本插过条目的 profile 会被顺手清掉（同一个 id 注册两次会让加载器报错）。
-3. **做一次包名解析自检**：`dsh-local-library` 与 `dsh-local-library/client` 都要能解析到，否则会缺半个插件。
+1. **建 junction**：`profiles\<name>\node_modules\DSH-library` → 本仓库。DSH 靠包名解析插件，junction 让包名成立，同时代码留在工作区、改完重启即生效。
+2. **登记到 `dsh.profile.bundles`**：把 `"DSH-library"` 加进 `profiles\<name>\package.json` 的 `dsh.profile.bundles` 数组——这是 DSH 加载插件的清单，插件自己的 `cordis.patch.yml`（`dsh.bundle.patch`）由 DSH 自动套用，**不需要**往 profile 的 `cordis.patch.yml` 写东西。旧版脚本插过条目的 profile 会被顺手清掉（同一个 id 注册两次会让加载器报错）。
+3. **做一次包名解析自检**：`DSH-library` 与 `DSH-library/client` 都要能解析到，否则会缺半个插件。
 
 脚本是幂等的，重复跑只打印“已存在/跳过”；不碰 `pnpm-lock.yaml`。
 
@@ -76,7 +76,7 @@ cd DSH-library
 pwsh -File scripts/install-tarball.ps1
 ```
 
-脚本先 `pnpm pack` 出 `dsh-local-library-<版本>.tgz`（默认放在 `$DSH_HOME\plugin-dist`），再用 DSH 自带的 node + pnpm 把它 `add` 进 profile。装进去的是**真拷贝**，lockfile 里记的是 tarball 的 `file:` + `integrity`，全程不需要 `git`，也不需要访问 npm registry。
+脚本先 `pnpm pack` 出 `DSH-library-<版本>.tgz`（默认放在 `$DSH_HOME\plugin-dist`），再用 DSH 自带的 node + pnpm 把它 `add` 进 profile。装进去的是**真拷贝**，lockfile 里记的是 tarball 的 `file:` + `integrity`，全程不需要 `git`，也不需要访问 npm registry。
 
 什么时候用它：
 
@@ -95,15 +95,17 @@ github:gch3212/DSH-library
 
 这条路由 pnpm 从 GitHub 取包，所以对方机器上 **DSH 启动的 pnpm 必须能找到 `git`**（装 Git for Windows 并让 `git` 在 PATH 里即可）。代价是：更新=按仓库重装，**会覆盖本地改动**；要改代码请用方式一。
 
-装好之后，插件管理里显示的还是包名 `dsh-local-library`——**包名刻意没改**，这样 cordis id、设置项、数据目录都能沿用；它不是一个“新插件”，而是同一个插件的 0.5.x。
+装好之后，插件管理里显示的包名是 `DSH-library`，版本 0.5.3。
+
+**为什么改名**：上游那份在市场里叫 `dsh-local-library`，两个不同来源用同一个包名，市场里会撞成两行同样名字，`pnpm` 也会把它们当成同一个包互相替换。改叫 `DSH-library` 之后两者互不干扰。资料库的数据目录仍是 `$DSH_HOME\local-library`，**改名不需要迁移任何文件**。
 
 ### 方式四：手动
 
-复制或链接本仓库到 `profiles\<name>\node_modules\dsh-local-library`，再把 `"dsh-local-library"` 加进 profile `package.json` 的 `dsh.profile.bundles`（更老的 DSH 版本则往 `cordis.patch.yml` 的 `- insert:` 里加 `- id: dsh-local-library` / `name: dsh-local-library` 两行）。Linux / macOS 上用软链代替 junction。
+复制或链接本仓库到 `profiles\<name>\node_modules\DSH-library`，再把 `"DSH-library"` 加进 profile `package.json` 的 `dsh.profile.bundles`（更老的 DSH 版本则往 `cordis.patch.yml` 的 `- insert:` 里加 `- id: DSH-library` / `name: 'DSH-library'` 两行）。Linux / macOS 上用软链代替 junction。
 
 ### 装之前的两点注意
 
-- **别和上游版并存**：包名与 [Fucaplos/dsh-local-library](https://github.com/Fucaplos/dsh-local-library) 相同，DSH 里同名只能有一个。之前装过上游版的，先在市场里把它卸掉。
+- **别和上游版同时装**：两个包名不同（`DSH-library` 与 `dsh-local-library`），技术上能并存，但没意义——它们注册同名的四个工具（`library_list` 等），也共用同一个数据目录 `$DSH_HOME\local-library`。装过上游版的，先把那个卸掉。
 - **资料库数据不随插件走**：文件都在本机 `$DSH_HOME\local-library`，换装、重装、卸载（不加 `-PurgeData`）都不会动它们，也不会同步给别人。
 
 ## 装好之后长什么样
@@ -140,6 +142,8 @@ $DSH_HOME\local-library\          # 默认 %APPDATA%\dsh-desktop\harness\local-l
 | `src/base-client.js` | 客户端源码：设置页那一半 |
 | `src/panel.part.js` | 客户端源码：侧边栏面板那一半（文件树 / 拖拽 / 备注 / 预览 / 工作文件） |
 | `scripts/splice-panel.mjs` | 把上面两个 src 拼成 `lib/client.js`；`--check` 只校验是否同步 |
+| `scripts/install-tarball.ps1` | 打成 tgz 装进 profile（不需要 git；改完代码重跑一次） |
+| `scripts/make-icon.py` | 用 Pillow 把 `icon.svg` 的形状重绘成 `assets/icon-180.png`（市场卡片只认位图） |
 | `lib/extract.js` | 零依赖文本抽取：docx/xlsx/pptx 用自研 ZIP 读取器，pdf 走 FlateDecode |
 | `lib/pdftext.js` | 可选：调本机 PyMuPDF 抽 PDF（中文更稳），探测不到就跳过 |
 | `lib/vision.js` | 可选：图片转文字描述（OpenAI 兼容 `chat/completions`，默认智谱 `glm-4v-flash`） |
@@ -199,8 +203,8 @@ $DSH_HOME\local-library\          # 默认 %APPDATA%\dsh-desktop\harness\local-l
 在 profile 的 `cordis.patch.yml` 里给这个条目加 `config`（不配就是关）：
 
 ```yaml
-- id: dsh-local-library
-  name: dsh-local-library
+- id: DSH-library
+  name: DSH-library
   config:
     vision:
       enabled: true

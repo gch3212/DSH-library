@@ -208,7 +208,7 @@
     if (!doc || doc.head === null) return
     if (doc.querySelector(`style[data-plugin-css="${PANEL_STYLE_TAG}"]`) !== null) return
     const tag = doc.createElement('style')
-    tag.dataset.plugin = 'dsh-local-library'
+    tag.dataset.plugin = 'DSH-library'
     tag.dataset.pluginCss = PANEL_STYLE_TAG
     tag.textContent = panelCssText()
     doc.head.appendChild(tag)

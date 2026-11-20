@@ -1,7 +1,7 @@
 {
-  "name": "dsh-local-library",
-  "version": "0.5.2",
-  "description": "本地资料库：把文件放进本机一处，之后每个对话都能直接检索、读取、下载；带侧边栏面板、文件夹分类、备注、最近访问与工作生成文件",
+  "name": "DSH-library",
+  "version": "0.5.3",
+  "description": "DSH Library（本地资料库）：把文件放进本机一处，之后每个对话都能直接检索、读取、下载；带侧边栏面板、文件夹分类、备注、最近访问与工作生成文件",
   "author": "Fucaplos",
   "contributors": [
     "gch3212 (0.5 的侧边栏面板 / 文件夹 / 备注 / 工作文件)"
@@ -22,9 +22,10 @@
     "./lib/*": "./lib/*",
     "./cordis.patch.yml": "./cordis.patch.yml"
   },
-  "icon": "icon.svg",
+  "icon": "assets/icon-180.png",
   "files": [
     "lib",
+    "assets",
     "icon.svg",
     "cordis.patch.yml",
     "README.md",
@@ -64,7 +65,8 @@
     "rag",
     "file-manager",
     "sidebar-panel",
-    "folders"
+    "folders",
+    "dsh-library"
   ],
   "license": "MIT"
 }

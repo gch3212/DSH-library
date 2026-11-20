@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  从 DSH Desktop 的 profile 里卸载 dsh-local-library。
+  从 DSH Desktop 的 profile 里卸载 DSH-library。
 
 .DESCRIPTION
   只撤销 install.ps1 做的两件事（patch 条目、node_modules 里的 junction）。
@@ -19,7 +19,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$PackageName = 'dsh-local-library'
+$PackageName = 'DSH-library'
 
 # 自动找 profile：优先 $DSH_HOME\profiles\{desktop,web}，再看老布局 %APPDATA%\dsh-desktop\harness\profiles\*
 function Resolve-DshProfileRoot {

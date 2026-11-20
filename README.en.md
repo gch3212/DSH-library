@@ -1,10 +1,10 @@
-# dsh-local-library
+# DSH Library
+
+<img src="assets/icon-180.png" width="96" height="96" alt="DSH Library">
 
 [中文](README.md) · [Changelog](CHANGELOG.md)
 
-[![test](https://github.com/gch3212/DSH-library/actions/workflows/test.yml/badge.svg)](https://github.com/gch3212/DSH-library/actions/workflows/test.yml)
-
-> **This repo is a fork of [Fucaplos/dsh-local-library](https://github.com/Fucaplos/dsh-local-library) (0.5.0).** It keeps the original local document library — files stay on your machine, every conversation can search and read them — and adds a **sidebar panel on the workbench home**, **Explorer-like folders with rename and notes**, **folder drag-and-drop that preserves the directory tree**, plus **Recently accessed** and **Work-generated files** views that can jump back to the chat that produced a file. `index.json` upgrades from v1 to v2 automatically; no data is lost.
+> **This repo is a fork of [Fucaplos/dsh-local-library](https://github.com/Fucaplos/dsh-local-library) (0.5.x).** It keeps the original local document library — files stay on your machine, every conversation can search and read them — and adds a **sidebar panel on the workbench home**, **Explorer-like folders with rename and notes**, **folder drag-and-drop that preserves the directory tree**, plus **Recently accessed** and **Work-generated files** views that can jump back to the chat that produced a file. `index.json` upgrades from v1 to v2 automatically; no data is lost.
 
 A **local document library plugin for DSH Desktop**: one file cabinet shared across all conversations. Files never leave the machine. Every new chat knows about it — the plugin registers four tools (`library_list`, `library_search`, `library_read`, `library_save`) and a system-prompt section, so the model looks things up by itself.
 
@@ -38,11 +38,11 @@ The script finds the profile itself (`$DSH_HOME\profiles\desktop`, `$DSH_HOME\pr
 pwsh -File install.ps1 -ProfileRoot 'D:\my-dsh\harness\profiles\desktop'
 ```
 
-It does three things, backing up every file it touches to `*.bak-dsh-local-library-<timestamp>`:
+It does three things, backing up every file it touches to `*.bak-DSH-library-<timestamp>`:
 
-1. Creates `profiles\<name>\node_modules\dsh-local-library` as a junction to this repo.
-2. Adds `"dsh-local-library"` to `dsh.profile.bundles` in `profiles\<name>\package.json` — that list is what DSH loads plugins from; the package's own `cordis.patch.yml` (`dsh.bundle.patch`) is applied automatically, so nothing has to be added to the profile's `cordis.patch.yml`. Profiles patched by the old 0.4.x script get that stale entry removed (registering the same id twice breaks the loader).
-3. Verifies that both `dsh-local-library` and `dsh-local-library/client` resolve.
+1. Creates `profiles\<name>\node_modules\DSH-library` as a junction to this repo.
+2. Adds `"DSH-library"` to `dsh.profile.bundles` in `profiles\<name>\package.json` — that list is what DSH loads plugins from; the package's own `cordis.patch.yml` (`dsh.bundle.patch`) is applied automatically, so nothing has to be added to the profile's `cordis.patch.yml`. Profiles patched by the old 0.4.x script get that stale entry removed (registering the same id twice breaks the loader).
+3. Verifies that both `DSH-library` and `DSH-library/client` resolve.
 
 It is idempotent and never touches `pnpm-lock.yaml`. Then **restart DSH Desktop** (host half) and **reload the page** (client half).
 
@@ -59,7 +59,7 @@ cd DSH-library
 pwsh -File scripts/install-tarball.ps1
 ```
 
-The script runs `pnpm pack` to produce `dsh-local-library-<version>.tgz` (by default under `$DSH_HOME\plugin-dist`), then installs it into the profile with the node and pnpm bundles DSH ships. What lands in `node_modules` is a real copy, and the lockfile records the tarball's `file:` spec plus `integrity` — no `git`, no npm registry access.
+The script runs `pnpm pack` to produce `DSH-library-<version>.tgz` (by default under `$DSH_HOME\plugin-dist`), then installs it into the profile with the node and pnpm bundles DSH ships. What lands in `node_modules` is a real copy, and the lockfile records the tarball's `file:` spec plus `integrity` — no `git`, no npm registry access.
 
 Use it when the pnpm DSH spawns cannot see `git` (market updates then fail with `ERR_PNPM_GIT_FETCH_FAILED`), or when you want a market-style copy rather than a link back to the working tree. The trade-off: **re-run the script after editing the code** and restart DSH; Option 1 picks up edits on restart alone. The script is idempotent, strips a previous junction first (otherwise pnpm reports "already up to date" and keeps the link), and re-installs over the old copy.
 
@@ -71,15 +71,15 @@ The repo is a standard npm package (`main` + `exports` + `dsh.bundle.patch` + `d
 github:gch3212/DSH-library
 ```
 
-That path fetches through pnpm, so `git` must be visible to the pnpm DSH spawns (installing Git for Windows is enough). Updates reinstall from the repo and therefore **overwrite local edits** — use Option 1 if you plan to change the code. The market keeps showing the package name `dsh-local-library`: the name is intentionally unchanged so the cordis id, settings and data directory carry over.
+That path fetches through pnpm, so `git` must be visible to the pnpm DSH spawns (installing Git for Windows is enough). Updates reinstall from the repo and therefore **overwrite local edits** — use Option 1 if you plan to change the code. The plugin manager shows the package name `DSH-library` (since 0.5.3; it used to be `dsh-local-library`). The rename keeps the two forks from colliding in the market and in pnpm, which treats identical package names as the same package. The data directory is still `$DSH_HOME\local-library`, so nothing has to be migrated.
 
 **Option 4 — manual**
 
-Copy or link this repo to `profiles\<name>\node_modules\dsh-local-library` and add `"dsh-local-library"` to `dsh.profile.bundles` in the profile's `package.json` (older DSH builds: add the `- id: dsh-local-library` / `name: dsh-local-library` pair under `- insert:` in `cordis.patch.yml`).
+Copy or link this repo to `profiles\<name>\node_modules\DSH-library` and add `"DSH-library"` to `dsh.profile.bundles` in the profile's `package.json` (older DSH builds: add the `- id: DSH-library` / `name: 'DSH-library'` pair under `- insert:` in `cordis.patch.yml`).
 
 **Two things to know first**
 
-- **Don't install both forks**: the package name matches [Fucaplos/dsh-local-library](https://github.com/Fucaplos/dsh-local-library), and DSH allows only one package with a given name. Uninstall the upstream plugin first.
+- **Don't install both forks at once**: the package names differ (`DSH-library` vs `dsh-local-library`), so they can coexist — but they register the same four tools (`library_list` and friends) and share one data directory, `$DSH_HOME\local-library`. Uninstall the upstream plugin first.
 - **Library data is per machine**: everything lives in `$DSH_HOME\local-library` and is not carried along with the plugin.
 
 ## The sidebar panel
@@ -136,8 +136,8 @@ Search supports `kind:`, `tag:` (exact), `after:`, `before:` filters; `strict` r
 ## Optional vision config
 
 ```yaml
-- id: dsh-local-library
-  name: dsh-local-library
+- id: DSH-library
+  name: DSH-library
   config:
     vision:
       enabled: true

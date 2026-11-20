@@ -26,7 +26,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$PackageName = 'dsh-local-library'
+$PackageName = 'DSH-library'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 
 function Fail([string]$Message) {

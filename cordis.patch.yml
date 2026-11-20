@@ -3,5 +3,5 @@
 # of loader patch entries（写成 `insert:` 映射会被判非法，`dsh plugin add` 直接回滚安装）。
 # id 必须全局唯一且等于包名；"id: 值" 行尾不能写注释（商城预检按行匹配 entry ID）。
 - insert:
-    - id: dsh-local-library
-      name: 'dsh-local-library'
+    - id: DSH-library
+      name: 'DSH-library'

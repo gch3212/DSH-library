@@ -53,7 +53,7 @@ export function build() {
             })
           }
         } catch (error) {
-          console.warn('[dsh-local-library] uiWorkspace injection skipped:', error)
+          console.warn('[DSH-library] uiWorkspace injection skipped:', error)
         }
         const jumpToSession = (sessionId) => {
           let service = uiWorkspace
@@ -69,7 +69,7 @@ export function build() {
             service.openSession(String(sessionId))
             return true
           } catch (error) {
-            console.warn('[dsh-local-library] openSession failed:', error)
+            console.warn('[DSH-library] openSession failed:', error)
             return false
           }
         }
@@ -85,10 +85,10 @@ export function build() {
             return installNavIcon(() => t('nav'))
           } catch (error) {
             // 图标只是锦上添花，DOM 结构和 DSH 版本相关，失败就沿用默认齿轮。
-            console.warn('[dsh-local-library] nav icon skipped:', error)
+            console.warn('[DSH-library] nav icon skipped:', error)
             return () => {}
           }
-        }, 'dsh-local-library: settings nav icon')
+        }, 'DSH-library: settings nav icon')
 `
   client = replaceOnce(
     client,

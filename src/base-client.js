@@ -1,5 +1,5 @@
 /**
- * dsh-local-library —— 客户端半侧（浏览器）。
+ * DSH-library —— 客户端半侧（浏览器）。
  *
  * 这个文件必须是一段**普通副作用脚本**：没有顶层 import/export，
  * 由 DSH 的模块加载器把 require 注入进来（见 makeFactory）。
@@ -243,7 +243,7 @@
     if (!doc || doc.head === null) return
     if (doc.querySelector(`style[data-plugin-css="${STYLE_TAG}"]`) !== null) return
     const tag = doc.createElement('style')
-    tag.dataset.plugin = 'dsh-local-library'
+    tag.dataset.plugin = 'DSH-library'
     tag.dataset.pluginCss = STYLE_TAG
     tag.textContent = cssText()
     doc.head.appendChild(tag)
@@ -280,7 +280,7 @@
 
     if (doc.querySelector(`style[data-plugin-css="${NAV_STYLE_TAG}"]`) === null) {
       const tag = doc.createElement('style')
-      tag.dataset.plugin = 'dsh-local-library'
+      tag.dataset.plugin = 'DSH-library'
       tag.dataset.pluginCss = NAV_STYLE_TAG
       tag.textContent = navCss(glyph)
       doc.head.appendChild(tag)
@@ -1015,7 +1015,7 @@
       // createElement 才有 (type, props, ...children) 的语义，和下面所有调用点一致。
       // 也不能用 const 局部变量遮蔽：makeSettings 定义在 IIFE 作用域，要读外层这个 h。
       h = react.createElement
-      if (typeof h !== 'function') throw new Error('dsh-local-library: react 没有导出 createElement')
+      if (typeof h !== 'function') throw new Error('DSH-library: react 没有导出 createElement')
 
       const name = 'local-library'
       const inject = ['slots', 'locale']
@@ -1041,7 +1041,7 @@
           try {
             dispose = ctx.locale.register(NS, { zh, en })
           } catch (error) {
-            console.warn('[dsh-local-library] locale.register failed:', error)
+            console.warn('[DSH-library] locale.register failed:', error)
             return () => {}
           }
           return () => {
@@ -1051,7 +1051,7 @@
               /* 语言包释放失败无副作用 */
             }
           }
-        }, 'dsh-local-library: locale')
+        }, 'DSH-library: locale')
 
         const Section = makeSettings({ useState, useEffect, useCallback, useRef, t })
 
@@ -1073,10 +1073,10 @@
             return installNavIcon(() => t('nav'))
           } catch (error) {
             // 图标只是锦上添花，DOM 结构和 DSH 版本相关，失败就沿用默认齿轮。
-            console.warn('[dsh-local-library] nav icon skipped:', error)
+            console.warn('[DSH-library] nav icon skipped:', error)
             return () => {}
           }
-        }, 'dsh-local-library: settings nav icon')
+        }, 'DSH-library: settings nav icon')
       }
 
       module.exports = { apply, inject, name }
@@ -1084,5 +1084,5 @@
     }
   }
 
-  window.__ModuleLoader__.load({ id: 'dsh-local-library', factory: makeFactory() })
+  window.__ModuleLoader__.load({ id: 'DSH-library', factory: makeFactory() })
 })()

@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  把 dsh-local-library 装进 DSH Desktop 的 profile（建 junction + cordis.patch.yml insert 一行）。
+  把 DSH-library 装进 DSH Desktop 的 profile（建 junction + cordis.patch.yml insert 一行）。
 
 .DESCRIPTION
   幂等：已经装过就只做自检。不碰 package.json / pnpm-lock.yaml / generation 投影。
@@ -18,7 +18,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$PackageName = 'dsh-local-library'
+$PackageName = 'DSH-library'
 $PackageDir = $PSScriptRoot
 
 function Fail([string]$Message) {
@@ -177,7 +177,7 @@ if ((Test-Path -LiteralPath $node) -and (Test-Path -LiteralPath $pkgJson)) {
 import { createRequire } from 'node:module'
 const require = createRequire(process.argv[2])
 let bad = 0
-for (const spec of ['dsh-local-library', 'dsh-local-library/client']) {
+for (const spec of ['DSH-library', 'DSH-library/client']) {
   try { console.log('  OK   ' + spec + ' -> ' + require.resolve(spec)) }
   catch (error) { bad++; console.log('  FAIL ' + spec + ' -> ' + error.message) }
 }
