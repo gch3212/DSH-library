@@ -22,7 +22,9 @@ A **local document library plugin for DSH Desktop**: one file cabinet shared acr
 
 ## Install
 
-Requires DSH Desktop. The script is Windows/PowerShell 7 (it creates a junction); on Linux/macOS symlink the repo into the profile's `node_modules` instead.
+Requires DSH Desktop and PowerShell 7 on Windows (the script creates a junction; on Linux/macOS symlink the repo into the profile's `node_modules` instead). The sidebar panel uses the `main` / `sidebar.panellist` slots, so it needs a reasonably recent DSH; older builds simply won't show the panel entry, the Settings page keeps working.
+
+**Option 1 — script (recommended)**
 
 ```powershell
 git clone https://github.com/gch3212/DSH-library.git
@@ -30,16 +32,43 @@ cd DSH-library
 pwsh -File install.ps1
 ```
 
-Then **restart DSH Desktop** (the host half loads at startup) and reload the page. `install.ps1` only creates `profiles\<name>\node_modules\dsh-local-library` → this repo, appends the two-line `- id: dsh-local-library / name: dsh-local-library` entry to `cordis.patch.yml`, and verifies both `dsh-local-library` and `dsh-local-library/client` resolve. It never touches `package.json` / lockfiles, so the plugin market keeps managing the package normally.
-
-Custom profile location:
+The script finds the profile itself (`$DSH_HOME\profiles\desktop`, `$DSH_HOME\profiles\web`, `%APPDATA%\dsh-desktop\harness\profiles\*`, `~\.dsh\profiles\*`), or you can point at it:
 
 ```powershell
-pwsh -File install.ps1 -ProfileRoot 'D:\my-dsh\harness\profiles\web'
-pwsh -File uninstall.ps1            # data is kept unless -PurgeData
+pwsh -File install.ps1 -ProfileRoot 'D:\my-dsh\harness\profiles\desktop'
 ```
 
-You can also add this repo as a profile dependency (`github:gch3212/DSH-library`), but market updates will then overwrite local edits — use `install.ps1` if you plan to change the code.
+It does three things, backing up every file it touches to `*.bak-dsh-local-library-<timestamp>`:
+
+1. Creates `profiles\<name>\node_modules\dsh-local-library` as a junction to this repo.
+2. Adds `"dsh-local-library"` to `dsh.profile.bundles` in `profiles\<name>\package.json` — that list is what DSH loads plugins from; the package's own `cordis.patch.yml` (`dsh.bundle.patch`) is applied automatically, so nothing has to be added to the profile's `cordis.patch.yml`. Profiles patched by the old 0.4.x script get that stale entry removed (registering the same id twice breaks the loader).
+3. Verifies that both `dsh-local-library` and `dsh-local-library/client` resolve.
+
+It is idempotent and never touches `pnpm-lock.yaml`. Then **restart DSH Desktop** (host half) and **reload the page** (client half).
+
+```powershell
+pwsh -File uninstall.ps1             # library data is kept
+pwsh -File uninstall.ps1 -PurgeData  # also delete $DSH_HOME\local-library
+```
+
+**Option 2 — plugin market**
+
+The repo is a standard npm package (`main` + `exports` + `dsh.bundle.patch` + `dsh.client`), so the market can install it by address:
+
+```
+github:gch3212/DSH-library
+```
+
+That path fetches through pnpm, so `git` must be visible to the pnpm DSH spawns (installing Git for Windows is enough). Updates reinstall from the repo and therefore **overwrite local edits** — use Option 1 if you plan to change the code. The market keeps showing the package name `dsh-local-library`: the name is intentionally unchanged so the cordis id, settings and data directory carry over.
+
+**Option 3 — manual**
+
+Copy or link this repo to `profiles\<name>\node_modules\dsh-local-library` and add `"dsh-local-library"` to `dsh.profile.bundles` in the profile's `package.json` (older DSH builds: add the `- id: dsh-local-library` / `name: dsh-local-library` pair under `- insert:` in `cordis.patch.yml`).
+
+**Two things to know first**
+
+- **Don't install both forks**: the package name matches [Fucaplos/dsh-local-library](https://github.com/Fucaplos/dsh-local-library), and DSH allows only one package with a given name. Uninstall the upstream plugin first.
+- **Library data is per machine**: everything lives in `$DSH_HOME\local-library` and is not carried along with the plugin.
 
 ## The sidebar panel
 

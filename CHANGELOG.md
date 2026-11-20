@@ -1,5 +1,22 @@
 # 更新记录
 
+## 0.5.1 — 2026-11-20 · 安装器修好，别人也能装
+
+功能没动，只修“装到别人机器上会踩”的坑。
+
+**修：安装脚本默认找错 profile**
+- `install.ps1` / `uninstall.ps1` 原来默认 `%APPDATA%\dsh-desktop\harness\profiles\web`（老布局），新布局（`$DSH_HOME\profiles\desktop`）上直接跑会失败。现在自动探测：`$DSH_HOME\profiles\{desktop,web}` → `%APPDATA%\dsh-desktop\harness\profiles\*` → `~\.dsh\profiles\*`，找不到才要求 `-ProfileRoot`。
+
+**修：注册机制改成 `dsh.profile.bundles`**
+- 原来往 profile 的 `cordis.patch.yml` 插两行——那是老办法，现在的 DSH 靠 `package.json` 的 `dsh.profile.bundles` 加载插件，两边都插会让同一个 id 注册两次、加载器报错。现在脚本只往 bundles 里加一行，并顺手清掉旧版脚本留下的 patch 条目（含缩进注释），删空的 `- insert:` 段一并修掉。
+
+**修：重复执行会崩**
+- junction 已存在时，`Get-Item` 取到的 Target 带 `\\?\` 或 `Global\` 前缀，`Resolve-Path` 会报“找不到驱动器。名为 Global\D 的驱动器不存在”。现在先剥前缀再用 `[IO.Path]::GetFullPath()` 比较，最后用 `lib\index.js` 的文件指纹兜底。
+
+**其它**
+- `uninstall.ps1` 对应地从 bundles 移除、清理旧 patch 条目，重复执行只打印“跳过”。
+- README（中/英）的安装段按脚本真实行为重写：三种装法、两条前置注意（别和上游同名版并存、数据留在各自机器）、面板对 DSH 版本的槽位要求。
+
 ## 0.5.0 — 2026-11-20 · 侧边栏面板 / 文件夹 / 备注 / 工作文件
 
 这一版是本仓库（`gch3212/DSH-library`）在原版 `Fucaplos/dsh-local-library` 0.4.1 基础上做的改造，数据结构仍然兼容：老的 `index.json`（v1）启动时自动升级到 v2，文件、标签、正文索引一个都不丢。

@@ -14,12 +14,40 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$ProfileRoot = (Join-Path $env:APPDATA 'dsh-desktop\harness\profiles\web'),
+  [string]$ProfileRoot,
   [switch]$PurgeData
 )
 
 $ErrorActionPreference = 'Stop'
 $PackageName = 'dsh-local-library'
+
+# 自动找 profile：优先 $DSH_HOME\profiles\{desktop,web}，再看老布局 %APPDATA%\dsh-desktop\harness\profiles\*
+function Resolve-DshProfileRoot {
+  $candidates = [Collections.Generic.List[string]]::new()
+  if ($env:DSH_HOME) {
+    $candidates.Add((Join-Path $env:DSH_HOME 'profiles\desktop'))
+    $candidates.Add((Join-Path $env:DSH_HOME 'profiles\web'))
+  }
+  $candidates.Add((Join-Path $env:APPDATA 'dsh-desktop\harness\profiles\desktop'))
+  $candidates.Add((Join-Path $env:APPDATA 'dsh-desktop\harness\profiles\web'))
+  if ($env:USERPROFILE) {
+    $candidates.Add((Join-Path $env:USERPROFILE '.dsh\profiles\desktop'))
+    $candidates.Add((Join-Path $env:USERPROFILE '.dsh\profiles\web'))
+  }
+  foreach ($dir in $candidates) {
+    if (-not (Test-Path -LiteralPath $dir)) { continue }
+    if ((Test-Path -LiteralPath (Join-Path $dir 'cordis.patch.yml')) -and (Test-Path -LiteralPath (Join-Path $dir 'package.json'))) { return $dir }
+  }
+  return $null
+}
+
+if (-not $ProfileRoot) { $ProfileRoot = Resolve-DshProfileRoot }
+if (-not $ProfileRoot) {
+  Write-Host "× 找不到 DSH profile。请用 -ProfileRoot 指定，一般在 <DSH_HOME>\profiles\desktop（当前 DSH_HOME=$env:DSH_HOME）。" -ForegroundColor Red
+  exit 1
+}
+Write-Host "profile: $ProfileRoot" -ForegroundColor DarkGray
+
 $LinkPath = Join-Path $ProfileRoot "node_modules\$PackageName"
 $PatchPath = Join-Path $ProfileRoot 'cordis.patch.yml'
 
@@ -40,7 +68,35 @@ if (Test-Path -LiteralPath $LinkPath) {
   Write-Host '= junction 不存在，跳过' -ForegroundColor DarkGray
 }
 
-# 2) 从 cordis.patch.yml 删掉 install 加的那几行
+# 2) 从 profile 的 dsh.profile.bundles 里移除（DSH 按这个列表加载插件）
+$pkgJsonPath = Join-Path $ProfileRoot 'package.json'
+if (Test-Path -LiteralPath $pkgJsonPath) {
+  $pkgRaw = [IO.File]::ReadAllText($pkgJsonPath)
+  $bundlesMatch = [regex]::Match($pkgRaw, '"bundles"\s*:\s*\[(?<body>[\s\S]*?)\]')
+  if ($bundlesMatch.Success) {
+    $body = $bundlesMatch.Groups['body'].Value
+    $names = @([regex]::Matches($body, '"([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
+    if ($names -contains $PackageName) {
+      $keptNames = @($names | Where-Object { $_ -ne $PackageName })
+      $nl = if ($pkgRaw.Contains("`r`n")) { "`r`n" } else { "`n" }
+      $indentMatch = [regex]::Match($body, '^\r?\n([ \t]+)"')
+      $indent = if ($indentMatch.Success) { $indentMatch.Groups[1].Value } else { '      ' }
+      $trailMatch = [regex]::Match($body, '\r?\n([ \t]*)$')
+      $trail = if ($trailMatch.Success) { $trailMatch.Groups[1].Value } else { '    ' }
+      $rebuild = (@($keptNames | ForEach-Object { $nl + $indent + '"' + $_ + '"' }) -join ',')
+      if ($keptNames.Count -gt 0) { $rebuild = $rebuild + "$nl$trail" }
+      $bodyStart = $bundlesMatch.Groups['body'].Index
+      $pkgRaw = $pkgRaw.Remove($bodyStart, $body.Length).Insert($bodyStart, $rebuild)
+      $backup = "$pkgJsonPath.bak-$PackageName-uninstall-" + (Get-Date -Format 'yyyyMMdd-HHmmss')
+      Copy-Item -LiteralPath $pkgJsonPath -Destination $backup
+      [IO.File]::WriteAllText($pkgJsonPath, $pkgRaw, (New-Object Text.UTF8Encoding($false)))
+      Write-Host "- dsh.profile.bundles 已移除 $PackageName（备份：$backup）" -ForegroundColor Green
+    } else {
+      Write-Host "= dsh.profile.bundles 里没有 $PackageName，跳过" -ForegroundColor DarkGray
+    }
+  }
+}
+# 3) 清掉旧版脚本插进 profile cordis.patch.yml 的条目（没有就跳过）
 if (Test-Path -LiteralPath $PatchPath) {
   $raw = [IO.File]::ReadAllText($PatchPath)
   $eol = if ($raw.Contains("`r`n")) { "`r`n" } else { "`n" }
@@ -64,17 +120,32 @@ if (Test-Path -LiteralPath $PatchPath) {
     $kept.Add($line)
   }
 
+  # 条目删完后可能只剩一个空的 "insert:" 段 —— 空 insert 会被加载器判非法，一起丢掉
+  $pruned = [Collections.Generic.List[string]]::new()
+  for ($i = 0; $i -lt $kept.Count; $i++) {
+    if ($kept[$i] -match '^-?\s*insert:\s*$') {
+      $next = $null
+      for ($j = $i + 1; $j -lt $kept.Count; $j++) {
+        if ($kept[$j].Trim() -ne '') { $next = $kept[$j]; break }
+      }
+      if ($null -eq $next -or $next -notmatch '^\s') { continue }
+    }
+    $pruned.Add($kept[$i])
+  }
+  while ($pruned.Count -gt 0 -and $pruned[$pruned.Count - 1].Trim() -eq '') { $pruned.RemoveAt($pruned.Count - 1) }
+  $kept = $pruned
+
   if ($removed -gt 0) {
     $backup = "$PatchPath.bak-$PackageName-uninstall-" + (Get-Date -Format 'yyyyMMdd-HHmmss')
     Copy-Item -LiteralPath $PatchPath -Destination $backup
-    [IO.File]::WriteAllText($PatchPath, ($kept -join $eol), (New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText($PatchPath, (($kept -join $eol) + $eol), (New-Object Text.UTF8Encoding($false)))
     Write-Host "- cordis.patch.yml 已清掉 $removed 行（备份：$backup）" -ForegroundColor Green
   } else {
     Write-Host '= cordis.patch.yml 里没有本插件，跳过' -ForegroundColor DarkGray
   }
 }
 
-# 3) 资料库数据
+# 4) 资料库数据
 $dshHome = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:APPDATA 'dsh-desktop\harness' }
 $dataDir = Join-Path $dshHome 'local-library'
 if ($PurgeData) {

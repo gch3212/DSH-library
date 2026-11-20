@@ -35,7 +35,7 @@
 
 ## 安装
 
-**前提**：DSH Desktop（Windows 上脚本用 junction 装，不需要管理员权限）、PowerShell 7。
+**前提**：DSH Desktop（Windows 上脚本用 junction 装，不需要管理员权限）、PowerShell 7。侧边栏面板用到 `main` / `sidebar.panellist` 槽位，需要较新的 DSH；更老的版本上面板入口不出现，设置页里的资料库照旧可用。
 
 ### 方式一：脚本（推荐）
 
@@ -45,45 +45,49 @@ cd DSH-library
 pwsh -File install.ps1
 ```
 
-装完**重启 DSH Desktop**（宿主半侧在启动时加载），**再刷新页面 F5**（客户端半侧由启动清单投递）。设置里应出现「本地资料库」，首页侧栏应出现资料库图标。
-
-脚本是**幂等**的：已经装过就只做自检。改配置前会先备份成 `cordis.patch.yml.bak-dsh-local-library-<时间戳>`。profile 不在默认位置时显式传路径：
+脚本会自己找 profile（依次试 `$DSH_HOME\profiles\desktop`、`$DSH_HOME\profiles\web`、`%APPDATA%\dsh-desktop\harness\profiles\*`、`~\.dsh\profiles\*`），找不到再显式传：
 
 ```powershell
-pwsh -File install.ps1 -ProfileRoot 'D:\my-dsh\harness\profiles\web'
+pwsh -File install.ps1 -ProfileRoot 'D:\my-dsh\harness\profiles\desktop'
 ```
+
+脚本只做三件事，改文件前都会先备份成 `*.bak-dsh-local-library-<时间戳>`：
+
+1. **建 junction**：`profiles\<name>\node_modules\dsh-local-library` → 本仓库。DSH 靠包名解析插件，junction 让包名成立，同时代码留在工作区、改完重启即生效。
+2. **登记到 `dsh.profile.bundles`**：把 `"dsh-local-library"` 加进 `profiles\<name>\package.json` 的 `dsh.profile.bundles` 数组——这是 DSH 加载插件的清单，插件自己的 `cordis.patch.yml`（`dsh.bundle.patch`）由 DSH 自动套用，**不需要**往 profile 的 `cordis.patch.yml` 写东西。旧版脚本插过条目的 profile 会被顺手清掉（同一个 id 注册两次会让加载器报错）。
+3. **做一次包名解析自检**：`dsh-local-library` 与 `dsh-local-library/client` 都要能解析到，否则会缺半个插件。
+
+脚本是幂等的，重复跑只打印“已存在/跳过”；不碰 `pnpm-lock.yaml`。
+
+装完**重启 DSH Desktop**（宿主半侧在启动时加载），**再刷新页面 F5**（客户端半侧由启动清单投递）。设置里应出现「本地资料库」，首页侧栏应出现资料库图标。
 
 卸载（数据默认保留，加 `-PurgeData` 才连文件一起删）：
 
 ```powershell
 pwsh -File uninstall.ps1
+pwsh -File uninstall.ps1 -PurgeData
 ```
 
-`install.ps1` 只做三件事：
+### 方式二：交给插件市场
 
-1. 在 `profiles\<name>\node_modules\dsh-local-library` 建一个 **junction** 指向本仓库——DSH 靠包名解析插件，junction 让包名成立，同时代码留在工作区、改完重启即生效。
-2. 往 `profiles\<name>\cordis.patch.yml` 的 `- insert:` 列表末尾加两行（`id` 必须全局唯一且与包名一致，行尾不能写注释）：
-   ```yaml
-   - id: dsh-local-library
-     name: dsh-local-library
-   ```
-3. 做一次包名解析自检：`dsh-local-library` 与 `dsh-local-library/client` 都要能解析到，否则宿主半侧或客户端半侧会缺一半。
-
-它**不碰** `package.json` / `pnpm-lock.yaml` / generation 投影——走 pnpm 容易被 `.desktop-bin\pnpm.cmd` 的 runner 干扰。
-
-### 方式二：交给插件市场 / profile 依赖
-
-本仓库是标准 npm 包（`main` + `exports` + `dsh.bundle.patch` + `dsh.client`），可以按包名地址装进 profile：
+本仓库是标准 npm 包（`main` + `exports` + `dsh.bundle.patch` + `dsh.client`），在市场里按地址安装即可：
 
 ```
 github:gch3212/DSH-library
 ```
 
-代价：**之后市场更新会覆盖本地改动**（因为更新就是按仓库重装）。如果你要改代码，用方式一。
+这条路由 pnpm 从 GitHub 取包，所以对方机器上 **DSH 启动的 pnpm 必须能找到 `git`**（装 Git for Windows 并让 `git` 在 PATH 里即可）。代价是：更新=按仓库重装，**会覆盖本地改动**；要改代码请用方式一。
+
+装好之后，插件管理里显示的还是包名 `dsh-local-library`——**包名刻意没改**，这样 cordis id、设置项、数据目录都能沿用；它不是一个“新插件”，而是同一个插件的 0.5.x。
 
 ### 方式三：手动
 
-把仓库目录复制或链接到 `profiles\<name>\node_modules\dsh-local-library`，再手动往 `cordis.patch.yml` 加那两行。Linux / macOS 上用软链代替 junction。
+复制或链接本仓库到 `profiles\<name>\node_modules\dsh-local-library`，再把 `"dsh-local-library"` 加进 profile `package.json` 的 `dsh.profile.bundles`（更老的 DSH 版本则往 `cordis.patch.yml` 的 `- insert:` 里加 `- id: dsh-local-library` / `name: dsh-local-library` 两行）。Linux / macOS 上用软链代替 junction。
+
+### 装之前的两点注意
+
+- **别和上游版并存**：包名与 [Fucaplos/dsh-local-library](https://github.com/Fucaplos/dsh-local-library) 相同，DSH 里同名只能有一个。之前装过上游版的，先在市场里把它卸掉。
+- **资料库数据不随插件走**：文件都在本机 `$DSH_HOME\local-library`，换装、重装、卸载（不加 `-PurgeData`）都不会动它们，也不会同步给别人。
 
 ## 装好之后长什么样
 
