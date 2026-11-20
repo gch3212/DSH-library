@@ -1,0 +1,227 @@
+/**
+ * 端到端自测：把宿主半侧的 HTTP 路由真跑起来（真 http server + 真 store），
+ * 覆盖文件夹树、拖文件夹上传保留结构、备注、移动、最近访问、预览、工作生成文件。
+ *
+ * 用法（本机）：
+ *   export DSH_DESKTOP_NODE_EXECUTABLE="D:\\Apps\\Deepseek Harness\\DeepSeek Harness.exe"
+ *   export ELECTRON_RUN_AS_NODE=1
+ *   "/d/Apps/Deepseek Harness/DeepSeek Harness.exe" test/api.e2e.mjs
+ */
+import http from 'node:http'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { zstdCompressSync } from 'node:zlib'
+
+const home = await mkdtemp(join(tmpdir(), 'll-home-'))
+process.env.DSH_HOME = home
+
+const plugin = await import('../lib/index.js')
+const routes = []
+const stubCtx = {
+  effect: (fn) => {
+    const off = fn()
+    if (typeof off === 'function') off()
+  },
+  webServer: { register: (definition) => routes.push(definition) },
+  tools: { register: () => () => {} },
+  systemPrompt: { section: () => () => {} }
+}
+plugin.apply(stubCtx, {})
+
+if (routes.length !== 1) throw new Error(`expected 1 route, got ${routes.length}`)
+
+const server = http.createServer((req, res) => routes[0].handler(req, res))
+await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+const base = `http://127.0.0.1:${server.address().port}/dsh-local-library`
+
+const failures = []
+function check(label, condition, detail) {
+  if (condition) console.log(`  ✓ ${label}`)
+  else {
+    failures.push(label)
+    console.log(`  ✗ ${label}${detail === undefined ? '' : ` → ${JSON.stringify(detail)}`}`)
+  }
+}
+
+async function call(method, path, body) {
+  const response = await fetch(base + path, {
+    method,
+    headers: body === undefined ? {} : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  })
+  const text = await response.text()
+  let json = null
+  try {
+    json = JSON.parse(text)
+  } catch {
+    json = null
+  }
+  return { status: response.status, json, text }
+}
+
+console.log(`\n[1] 空库 /tree`)
+let tree = await call('GET', '/tree')
+check('status 200', tree.status === 200, tree)
+check('folders 为空', Array.isArray(tree.json?.folders) && tree.json.folders.length === 0)
+check('items 为空', Array.isArray(tree.json?.items) && tree.json.items.length === 0)
+check('stats.folders 存在', typeof tree.json?.stats?.folders === 'number', tree.json?.stats)
+
+console.log(`\n[2] 建文件夹：论文 → 2026`)
+const root = await call('POST', '/folder', { name: '论文', remark: '我的学术材料' })
+check('建根目录 200', root.status === 200, root)
+check('名字正确', root.json?.folder?.name === '论文', root.json)
+const nested = await call('POST', '/folder', { name: '2026', parentId: root.json?.folder?.id })
+check('建子目录 200', nested.status === 200, nested)
+check('path 是 论文/2026', nested.json?.folder?.path === '论文/2026', nested.json?.folder)
+const again = await call('POST', '/folder', { name: '2026', parentId: root.json?.folder?.id })
+check('同层同名返回同一个', again.json?.folder?.id === nested.json?.folder?.id, again.json?.folder)
+
+console.log(`\n[3] 拖文件夹上传（带相对路径，自动建目录链）`)
+const uploadA = await call('POST', '/upload?name=%E7%AC%94%E8%AE%B0.md&path=%E8%AE%BA%E6%96%87%2F2026%2F%E7%AC%94%E8%AE%B0.md', {
+  x: 1
+})
+check('上传 200', uploadA.status === 200, uploadA)
+check('落进了 论文/2026', uploadA.json?.item?.folderPath === '论文/2026', uploadA.json?.item)
+const uploadB = await call('POST', '/upload?name=b.md&path=%E8%AE%BA%E6%96%87%2F%E7%AC%94%E8%AE%B0.md', { y: 2 })
+check('另一个目录', uploadB.json?.item?.folderPath === '论文', uploadB.json?.item)
+
+// 拖进「某个文件夹里的整个目录」：层次要长在那个文件夹下面，而不是根目录。
+const paperId = root.json?.folder?.id
+const uploadNested = await call(
+  'POST',
+  `/upload?name=n.md&folder=${encodeURIComponent(paperId)}&path=%E6%8A%95%E7%A8%BF%2Fn.md`,
+  { z: 3 }
+)
+check('上传到子文件夹 200', uploadNested.status === 200, uploadNested)
+check(
+  '落在 论文/投稿 而不是 投稿',
+  uploadNested.json?.item?.folderPath === '论文/投稿',
+  uploadNested.json?.item
+)
+
+console.log(`\n[4] 备注 + 改名（PATCH /item）`)
+const itemId = uploadA.json?.item?.id
+const patched = await call('PATCH', `/item?id=${itemId}`, { remark: '导师改过的版本，第三节有问题', name: '笔记-v2.md' })
+check('改名生效', patched.json?.item?.name === '笔记-v2.md', patched.json?.item)
+check('备注生效', /导师改过/.test(patched.json?.item?.remark || ''), patched.json?.item?.remark)
+check('folderPath 还在', patched.json?.item?.folderPath === '论文/2026', patched.json?.item?.folderPath)
+
+console.log(`\n[5] 备注 / 文件夹名参与检索（走工具同一套 search）`)
+const store = (await import('../lib/store.js')).LibraryStore
+const probe = new store(join(home, 'local-library'))
+await probe.init()
+const byRemark = await probe.search('导师改过')
+check('按备注搜到', byRemark.length === 1 && byRemark[0].item.id === itemId, byRemark.map((h) => h.item.name))
+const byFolder = await probe.search('论文')
+check('按文件夹名搜到 3 条（论文 整棵子树）', byFolder.length === 3, byFolder.map((h) => h.item.name))
+
+console.log(`\n[6] 预览 → 最近访问`)
+let recent = await call('GET', '/recent')
+check('还没访问过', recent.json?.items?.length === 0, recent.json?.items?.length)
+const preview = await call('GET', `/preview?id=${itemId}`)
+check('预览 200', preview.status === 200, preview)
+check('拿到正文（md 存的是 JSON 体，不验证内容）', typeof preview.json?.text === 'string')
+recent = await call('GET', '/recent')
+check('现在有 1 条', recent.json?.items?.length === 1, recent.json?.items?.length)
+check('accessCount = 1', recent.json?.items?.[0]?.accessCount === 1, recent.json?.items?.[0])
+
+console.log(`\n[7] 移动 + 文件夹改名/遍历防护`)
+const moved = await call('POST', '/move', { ids: [itemId], folderId: root.json?.folder?.id })
+check('移动成功', moved.json?.moved?.length === 1, moved.json)
+tree = await call('GET', '/tree')
+check('条目的 folderPath 变成 论文', tree.json?.items?.find((it) => it.id === itemId)?.folderPath === '论文', tree.json?.items)
+const renameFolder = await call('PATCH', `/folder?id=${root.json?.folder?.id}`, { name: '学术资料' })
+check('文件夹改名', renameFolder.json?.folder?.name === '学术资料', renameFolder.json?.folder)
+const cycle = await call('PATCH', `/folder?id=${root.json?.folder?.id}`, { parentId: nested.json?.folder?.id })
+check('不能把父目录挪进子目录', cycle.json?.folder?.parentId === '', cycle.json?.folder)
+
+console.log(`\n[8] 删文件夹（默认内容上提）`)
+// 先把 b.md 塞进 2026，删掉 2026 之后它应该上提到父目录 论文。
+await call('POST', '/move', { ids: [uploadB.json?.item?.id], folderId: nested.json?.folder?.id })
+const removed = await call('DELETE', `/folder?id=${nested.json?.folder?.id}`)
+check('删除 200', removed.status === 200, removed)
+// removeFolder 的返回值里要能看到"没有连文件一起删"，否则用户会担心文件没了。
+check('保留文件（removedItems=0）', removed.json?.removedItems === 0, removed.json)
+tree = await call('GET', '/tree')
+check('子目录没了', !tree.json.folders.some((f) => f.id === nested.json?.folder?.id))
+check(
+  '里面的文件上提到父目录',
+  tree.json?.items?.find((it) => it.id === uploadB.json?.item?.id)?.folderPath === '学术资料',
+  tree.json?.items
+)
+
+console.log(`\n[9] 递归删`)
+const gone = await call('DELETE', `/folder?id=${root.json?.folder?.id}&recursive=1`)
+check('递归删 200', gone.status === 200, gone)
+tree = await call('GET', '/tree')
+check('剩下 0 个文件夹', tree.json.folders.length === 0, tree.json.folders.map((f) => f.name))
+
+console.log(`\n[10] 把磁盘上的文件收进库（import-path）`)
+const outside = join(home, 'outside-report.md')
+await writeFile(outside, '# 外部文件\n\n正文一段。', 'utf8')
+const imported = await call('POST', '/import-path', { path: outside, remark: '外部生成的报表' })
+check('导入 200', imported.status === 200, imported)
+check('备注带上', imported.json?.item?.remark === '外部生成的报表', imported.json?.item)
+
+console.log(`\n[11] 工作生成文件（合成的会话日志）`)
+// 自己造一份迷你会话日志，不依赖本机真实会话：公开仓库里不该出现作者的路径，
+// 也让这套测试在 CI 上能真的跑起来。日志格式见 lib/sessions.js 顶部注释：
+// 一串独立的 zstd frame，每个 frame 里是若干行 JSONL 事件。
+const sessionId = 'session-5f00d000-0000-4000-8000-abcdefabcdef'
+const sessionDir = join(home, 'sessions', '--tmp-work--', sessionId)
+await mkdir(sessionDir, { recursive: true })
+const deliveredPath = join(home, 'out', '季度报告.docx')
+const writtenPath = join(home, 'out', 'notes.md')
+await mkdir(dirname(deliveredPath), { recursive: true })
+await writeFile(deliveredPath, 'docx-bytes', 'utf8')
+await writeFile(writtenPath, '# 笔记\n', 'utf8')
+const now = Date.now()
+const frames = [
+  [{ type: 'session', version: 4, id: sessionId, createdAt: now - 60000, cwd: join(home, 'out') }],
+  [
+    { type: 'session/title', seq: 3, time: now - 50000, data: { title: '季度汇报整理' } },
+    {
+      type: 'deliverables/presented',
+      seq: 7,
+      time: now - 40000,
+      data: { turn: 2, callId: 'c1', files: [{ path: deliveredPath, description: '按导师意见改过的一版' }] }
+    }
+  ],
+  [
+    {
+      type: 'tool/call',
+      seq: 9,
+      time: now - 30000,
+      data: { turn: 3, step: 1, callId: 'c2', name: 'write', arguments: JSON.stringify({ path: writtenPath }) }
+    }
+  ]
+]
+const encodeFrame = (records) =>
+  zstdCompressSync(Buffer.from(records.map((record) => JSON.stringify(record)).join('\n') + '\n'))
+await writeFile(
+  join(sessionDir, 'session.v4.jsonl.zstd'),
+  Buffer.concat(frames.map((records) => encodeFrame(records)))
+)
+
+const work = await call('GET', '/workfiles?limit=5')
+check('status 200', work.status === 200, work.status)
+check('返回 files 数组', Array.isArray(work.json?.files), typeof work.json?.files)
+const rows = work.json?.files || []
+check('解析出 2 个文件（交付物 + 写入）', rows.length === 2, rows.map((row) => `${row.name}:${row.kind}`))
+const delivered = rows.find((row) => row.path === deliveredPath)
+check('交付物 kind=deliverable', delivered?.kind === 'deliverable', delivered?.kind)
+check('交付物带说明', delivered?.description === '按导师意见改过的一版', delivered?.description)
+check('带 sessionId（能定位到聊天）', delivered?.sessionId === sessionId, delivered?.sessionId)
+check('带会话标题', delivered?.sessionTitle === '季度汇报整理', delivered?.sessionTitle)
+check('文件在磁盘上 → exists', delivered?.exists === true, delivered)
+const written = rows.find((row) => row.path === writtenPath)
+check('写入文件 kind=write', written?.kind === 'write', written?.kind)
+const sessionRows = work.json?.sessions || []
+const sessionRow = sessionRows.find((row) => row.id === sessionId)
+check('sessions 里有这条会话', Boolean(sessionRow), sessionRows)
+check('会话 label 用标题', typeof sessionRow?.label === 'string' && sessionRow.label.includes('季度汇报'), sessionRow?.label)
+
+server.close()
+console.log(`\n${failures.length === 0 ? '全部通过' : `失败 ${failures.length} 项：${failures.join(' / ')}`}`)
+process.exit(failures.length === 0 ? 0 : 1)
