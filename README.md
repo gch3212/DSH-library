@@ -68,7 +68,24 @@ pwsh -File uninstall.ps1
 pwsh -File uninstall.ps1 -PurgeData
 ```
 
-### 方式二：交给插件市场
+### 方式二：tarball（不需要 git、不需要联网）
+
+```powershell
+git clone https://github.com/gch3212/DSH-library.git
+cd DSH-library
+pwsh -File scripts/install-tarball.ps1
+```
+
+脚本先 `pnpm pack` 出 `dsh-local-library-<版本>.tgz`（默认放在 `$DSH_HOME\plugin-dist`），再用 DSH 自带的 node + pnpm 把它 `add` 进 profile。装进去的是**真拷贝**，lockfile 里记的是 tarball 的 `file:` + `integrity`，全程不需要 `git`，也不需要访问 npm registry。
+
+什么时候用它：
+
+- 这台机器的 **DSH 启动的 pnpm 找不到 `git`**（这时市场按地址更新会报 `ERR_PNPM_GIT_FETCH_FAILED`）；
+- 想要“市场装出来那种拷贝”，而不是指向工作区的链接。
+
+代价：**改完代码要重跑一次脚本**（再重启 DSH），不像方式一那样重启即生效。脚本幂等，重复跑会用当前版本覆盖；它会先摘掉上一次留下的 junction，免得 pnpm 认为“已经是最新的”而不换。
+
+### 方式三：交给插件市场
 
 本仓库是标准 npm 包（`main` + `exports` + `dsh.bundle.patch` + `dsh.client`），在市场里按地址安装即可：
 
@@ -80,7 +97,7 @@ github:gch3212/DSH-library
 
 装好之后，插件管理里显示的还是包名 `dsh-local-library`——**包名刻意没改**，这样 cordis id、设置项、数据目录都能沿用；它不是一个“新插件”，而是同一个插件的 0.5.x。
 
-### 方式三：手动
+### 方式四：手动
 
 复制或链接本仓库到 `profiles\<name>\node_modules\dsh-local-library`，再把 `"dsh-local-library"` 加进 profile `package.json` 的 `dsh.profile.bundles`（更老的 DSH 版本则往 `cordis.patch.yml` 的 `- insert:` 里加 `- id: dsh-local-library` / `name: dsh-local-library` 两行）。Linux / macOS 上用软链代替 junction。
 

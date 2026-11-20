@@ -51,7 +51,19 @@ pwsh -File uninstall.ps1             # library data is kept
 pwsh -File uninstall.ps1 -PurgeData  # also delete $DSH_HOME\local-library
 ```
 
-**Option 2 — plugin market**
+**Option 2 — tarball (no git, no network)**
+
+```powershell
+git clone https://github.com/gch3212/DSH-library.git
+cd DSH-library
+pwsh -File scripts/install-tarball.ps1
+```
+
+The script runs `pnpm pack` to produce `dsh-local-library-<version>.tgz` (by default under `$DSH_HOME\plugin-dist`), then installs it into the profile with the node and pnpm bundles DSH ships. What lands in `node_modules` is a real copy, and the lockfile records the tarball's `file:` spec plus `integrity` — no `git`, no npm registry access.
+
+Use it when the pnpm DSH spawns cannot see `git` (market updates then fail with `ERR_PNPM_GIT_FETCH_FAILED`), or when you want a market-style copy rather than a link back to the working tree. The trade-off: **re-run the script after editing the code** and restart DSH; Option 1 picks up edits on restart alone. The script is idempotent, strips a previous junction first (otherwise pnpm reports "already up to date" and keeps the link), and re-installs over the old copy.
+
+**Option 3 — plugin market**
 
 The repo is a standard npm package (`main` + `exports` + `dsh.bundle.patch` + `dsh.client`), so the market can install it by address:
 
@@ -61,7 +73,7 @@ github:gch3212/DSH-library
 
 That path fetches through pnpm, so `git` must be visible to the pnpm DSH spawns (installing Git for Windows is enough). Updates reinstall from the repo and therefore **overwrite local edits** — use Option 1 if you plan to change the code. The market keeps showing the package name `dsh-local-library`: the name is intentionally unchanged so the cordis id, settings and data directory carry over.
 
-**Option 3 — manual**
+**Option 4 — manual**
 
 Copy or link this repo to `profiles\<name>\node_modules\dsh-local-library` and add `"dsh-local-library"` to `dsh.profile.bundles` in the profile's `package.json` (older DSH builds: add the `- id: dsh-local-library` / `name: dsh-local-library` pair under `- insert:` in `cordis.patch.yml`).
 

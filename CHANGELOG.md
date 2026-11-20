@@ -1,5 +1,17 @@
 # 更新记录
 
+## 0.5.2 — 2026-11-20 · 加一条不依赖 git 的安装路径
+
+功能没动，只多一种装法。
+
+**新增 `scripts/install-tarball.ps1`**
+- 先把仓库 `pnpm pack` 成 `.tgz`，再用 DSH 自带的 node + pnpm 装进 profile。装进去是**真拷贝**，lockfile 记 tarball 的 `file:` + `integrity`，全程不需要 `git`，也不需要访问 npm registry。
+- 适用场景：DSH 启动的 pnpm 找不到 `git`（这类机器上市场按地址更新会报 `ERR_PNPM_GIT_FETCH_FAILED`），或者就是想要市场装出来那种拷贝。
+- 幂等：先摘掉上一次留下的 junction（否则 pnpm 会认为“已经是最新的”而保留链接），再装新版本；装完确认 `dsh.profile.bundles` 里有这个包，没有就补上。
+
+**文档**
+- README 的安装方式从三条变四条（新增 tarball），并写清它和 junction 方式的差别：拷贝式改完代码要重新打包重装，junction 式重启即生效。
+
 ## 0.5.1 — 2026-11-20 · 安装器修好，别人也能装
 
 功能没动，只修“装到别人机器上会踩”的坑。
