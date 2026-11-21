@@ -85,7 +85,7 @@ Copy or link this repo to `profiles\<name>\node_modules\DSH-library` and add `"D
 
 ## The sidebar panel
 
-- **Left**: three views (All files / Recently accessed / Work-generated files), the folder tree, and "New folder".
+- **Left**: four views (All files / Recently accessed / Work-generated files / Trash), the folder tree, and "New folder".
 - **All files**: breadcrumb on top; folder rows expand and accept drops (dropping a file on a folder moves it there); the root lists folders only, like Explorer. Each row offers **rename / note / download / delete**.
 - **Drop files or folders**: dropping on empty space lands in the current folder, dropping on a folder row lands inside it, and the directory hierarchy is preserved. Uploads show progress; duplicates are reported.
 - **Notes**: folders and files both take a human sentence ("advisor's version", "for submission"). Notes are searchable and visible to the model.
@@ -94,6 +94,7 @@ Copy or link this repo to `profiles\<name>\node_modules\DSH-library` and add `"D
 - **Batch actions**: every row has a checkbox; a selection bar offers batch move, batch note (append), zip download and batch delete (with confirmation).
 - **Opening a file**: clicking a row hands the file to DSH's own document tab — markdown rendering, images, PDF, Office and code are picked by extension. The panel first switches the central area back to the conversation (the right tab bar only exists there) and then opens `dsh-resource://file/session/<session>/<path>`; a `POST /open-path` route materializes `open/<id>/<file name>` as a hard link so the tab shows the name you gave it. If the DSH build has no `sidebarRight` service, the panel falls back to its own read-only text preview.
 - **Read-only library**: the plugin never rewrites your files. To change one, download it, edit it, and upload it again (same name → you are asked whether to replace).
+- **Delete = move to trash**: the Trash view restores, purges or empties; the bytes stay on disk until you purge.
 
 ## Data layout
 
@@ -161,7 +162,7 @@ node test/run-all.mjs                  # all suites
 
 Host-side changes need a DSH Desktop restart; client-side changes need a page reload (after a restart that picked up the new manifest).
 
-Suites: `api.e2e` (real HTTP server over every route), `tools.e2e` (tool schemas and rendered text), `panel.smoke` (panel rendering, slots, jump-to-chat), `plugin.smoke` (end-to-end upload → search → read → bundle → delete), `bugfix.test` (one assertion per audited bug), `extract.test` (18 extraction cases), `navicon.test`, `client.smoke`, `cordis.integration` (the last three need a real DSH profile and SKIP without one). `test/check-live.mjs` inspects the real library read-only.
+Suites: `api.e2e` (real HTTP server over every route), `tools.e2e` (tool schemas and rendered text), `panel.smoke` (panel rendering, slots, jump-to-chat, batch bar, trash view, document-tab handoff), `plugin.smoke` (end-to-end upload → search → read → bundle → delete), `bugfix.test` (one assertion per audited bug), `extract.test` (19 extraction cases), `navicon.test`, `client.smoke`, `cordis.integration` (the last three need a real DSH profile and SKIP without one). `test/check-live.mjs` inspects the real library read-only.
 
 ## Known limitations
 
