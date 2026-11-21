@@ -98,9 +98,11 @@ const treePayload = {
   pending: 0
 }
 const fetchLog = []
+const openPath = 'D:/DSH Data/Home/local-library/open/ll-1/植物笔记.md'
 globalThis.fetch = async (url) => {
   fetchLog.push(String(url))
   const send = (data) => ({ ok: true, status: 200, text: async () => JSON.stringify(data) })
+  if (String(url).includes('/open-path')) return send({ path: openPath, name: '植物笔记.md' })
   if (String(url).includes('/tree')) return send(treePayload)
   if (String(url).includes('/recent')) return send({ items: [treePayload.items[0]] })
   if (String(url).includes('/workfiles')) {
@@ -186,6 +188,8 @@ try {
 // ── 假 ctx ────────────────────────────────────────────────────────────
 const registrations = []
 const openedSessions = []
+const openedDocs = []
+const selectedPanels = []
 const ctx = {
   effect(fn) {
     const dispose = fn()
@@ -195,8 +199,18 @@ const ctx = {
   },
   locale: { register: () => () => {} },
   inject(names, callback) {
-    // 客户端服务在这里注入：给一个假的 uiWorkspace.openSession 就够验「定位到聊天」。
-    callback({ uiWorkspace: { openSession: (id) => openedSessions.push(id) } })
+    // 客户端服务在这里注入：uiWorkspace 验「定位到聊天」，sidebarRight + layout 验「交给文档面板」。
+    callback({
+      uiWorkspace: { openSession: (id) => openedSessions.push(id) },
+      sidebarRight: {
+        mounted: { getSnapshot: () => 'session-test' },
+        openResource: (address) => openedDocs.push(address)
+      },
+      layout: {
+        panelInfo: { getSnapshot: () => ({ activePanelId: 'local-library' }) },
+        selectPanel: (id) => selectedPanels.push(id)
+      }
+    })
   },
   slots: {
     inject(name, generator) {
@@ -270,10 +284,7 @@ const SLOT = {
   selected: 19,
   anchorId: 20,
   moveMenu: 21,
-  batchDraft: 22,
-  editMode: 23,
-  draft: 24,
-  saving: 25
+  batchDraft: 22
 }
 
 function baseSeeds() {
@@ -301,9 +312,6 @@ function baseSeeds() {
   list[SLOT.anchorId] = null
   list[SLOT.moveMenu] = false
   list[SLOT.batchDraft] = null
-  list[SLOT.editMode] = false
-  list[SLOT.draft] = ''
-  list[SLOT.saving] = false
   return list
 }
 
@@ -486,27 +494,44 @@ function render(overrides = {}) {
   check('批量备注有写入按钮', text.includes('写入备注'))
 }
 
-// 编辑态：文本文件可改
+// 面板里不再自带编辑器（交给 DSH 自带的文档面板）
 {
   const { classes, text } = render({
     tree: treePayload,
-    preview: { item: treePayload.items[0], text: '正文摘要…', total: 6 },
-    editMode: true,
-    draft: '正文摘要…'
-  })
-  check('编辑态渲染 textarea', classes.has('llp-editor'), [...classes].filter((c) => c.startsWith('llp-e')).join(','))
-  check('编辑态不再显示只读正文', !classes.has('llp-pvtext'))
-  check('编辑态给出快捷键提示', text.includes('Ctrl+S 保存'), text.slice(0, 400))
-  check('编辑态按钮变成保存/取消', text.includes('保存') && text.includes('取消'))
-}
-
-// 只读态：可编辑的文本文件提供「编辑」按钮
-{
-  const { text } = render({
-    tree: treePayload,
     preview: { item: treePayload.items[0], text: '正文摘要…', total: 6 }
   })
-  check('预览里有编辑按钮', text.includes('编辑'), text.slice(0, 400))
+  check('预览里没有自写的编辑器', !classes.has('llp-editor') && !text.includes('Ctrl+S'))
+  check('预览仍然给出正文', classes.has('llp-pvtext') && text.includes('正文摘要'), text.slice(0, 400))
+}
+
+// 点文件 → 先交给 DSH 文档面板（layout 切回对话 + sidebarRight.openResource）
+{
+  const { element } = render({ tree: treePayload, folderId: 'lf-a' })
+  const rows = []
+  const collect = (node) => {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) {
+      node.forEach(collect)
+      return
+    }
+    if (node.props && node.props.onClick && String(node.props.className || '').includes('llp-row') && !String(node.props.className || '').includes('llp-folder')) rows.push(node)
+    const kids = node.props ? node.props.children : null
+    if (kids) collect(kids)
+  }
+  collect(element)
+  check('文件行可点击', rows.length > 0, String(rows.length))
+  selectedPanels.length = 0
+  openedDocs.length = 0
+  // 文件夹行和文件行都用 .llp-row：文件夹先渲染，所以文件是最后一个。
+  rows[rows.length - 1].props.onClick()
+  await new Promise((resolve) => setTimeout(resolve, 120))
+  check('点文件先把主区域切回对话', selectedPanels.includes(null), JSON.stringify(selectedPanels))
+  check('点文件交给 DSH 文档面板', openedDocs.length === 1, JSON.stringify(openedDocs))
+  check(
+    '地址是 session 作用域的文件地址',
+    openedDocs[0] === 'dsh-resource://file/session/session-test/D:/DSH%20Data/Home/local-library/open/ll-1/%E6%A4%8D%E7%89%A9%E7%AC%94%E8%AE%B0.md',
+    openedDocs[0]
+  )
 }
 
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`)

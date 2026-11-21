@@ -32,7 +32,8 @@
 - **最近访问**：按 `lastAccessAt` 排，显示访问次数。
 - **工作生成文件**：读本机会话日志（`deliverables/presented` 交付物 + `write`/`edit` 类工具写过盘的文件），按会话分组。每行两个按钮：**定位到聊天**（跳回原会话）、**存入资料库**（把磁盘上的文件收进库，之后每个对话都能检索到它）。
 - **批量操作**：每行前面有复选框，选中后上方出现批量条——批量移动到文件夹、批量备注（追加）、打包下载成一个 zip、批量删除（有确认）。
-- **预览与编辑**：点一行文件在右栏看抽好的纯文本（长文可继续加载），不重新解析原文件；文本类文件点「编辑」可以直接改，`Ctrl+S` 写回磁盘并重建索引，PDF / 图片 / Office 只能下载改完再上传。
+- **打开文件**：点一行文件，面板会切回对话、在右侧栏用 DSH 自带的文档预览打开它——markdown 渲染、图片、PDF、Office、代码都按扩展名认；标题就是文件在库里显示的名字（宿主用硬链接给了一份同内容的临时路径）。右栏那个预览是 DSH 自己的，跟资源管理器里点开一个文件是一回事，不用在插件里再写一套。
+- **只读说明**：资料库不改写文件内容。要改就点「下载」拿原件改完再上传（同名会问是否替换）。
 
 ## 安装
 
@@ -177,6 +178,7 @@ $DSH_HOME\local-library\          # 默认 %APPDATA%\dsh-desktop\harness\local-l
 | GET | `/workfiles?limit=` | `{files, sessions}`：写盘/交付文件清单 + 会话元数据（标题、cwd、交付数） |
 | POST | `/import-path` | body `{path, folderId?, remark?}`，把磁盘上的文件收进库 |
 | PUT | `/file?id=` | body `{text}`，改文本类文件的正文（同步大小 / sha256 / 索引），`{item, text}` |
+| POST | `/open-path?id=` | 给 DSH 文档面板用的真实路径（`open/<id>/<文件名>` 硬链接），`{item, path, name}` |
 | POST | `/delete` | body `{ids}`，批量移除，`{removed}` |
 | POST | `/remark` | body `{ids, remark, mode?}`（`append` 追加），`{updated}` |
 | POST | `/folder` | body `{name, parentId?, remark?}`，建文件夹（同层同名幂等），`{folder}` |

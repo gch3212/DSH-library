@@ -10,7 +10,8 @@
 import http from 'node:http'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, sep } from 'node:path'
+import { stat } from 'node:fs/promises'
 import { zstdCompressSync } from 'node:zlib'
 
 const home = await mkdtemp(join(tmpdir(), 'll-home-'))
@@ -265,6 +266,28 @@ check('会话 label 用标题', typeof sessionRow?.label === 'string' && session
   check('空选择 → 400', empty.status === 400 && empty.json?.error === 'empty-selection', empty.json)
   const goneList = await call('GET', '/list')
   check('删掉的条目不在列表里', !(goneList.json?.items || []).some((row) => row.id === editId), editId)
+}
+
+/* ── 13. 交给 DSH 文档面板：open-path 给出漂亮路径 ─────────── */
+{
+  const created = await call('POST', '/upload?name=论文 笔记.md', Buffer.from('正文', 'utf8'), 'text/markdown')
+  const id = created.json?.item?.id
+  check('open-path 用文件创建成功', Boolean(id), created.status)
+
+  const opened = await call('POST', `/open-path?id=${encodeURIComponent(id)}`)
+  check('POST /open-path 状态 200', opened.status === 200, opened.status)
+  check('open-path 返回 name', opened.json?.name === '论文 笔记.md', opened.json?.name)
+  const nicePath = String(opened.json?.path || '')
+  check('open-path 使用用户起的名字', nicePath.endsWith('论文 笔记.md'), nicePath)
+  check('open-path 落在 open/<id>/ 下', nicePath.includes(`open${sep}${id}${sep}`), nicePath)
+  const info = await stat(nicePath).catch(() => null)
+  check('open-path 指向真实文件', Boolean(info && info.isFile()), info)
+  check('open-path 与库里那份同大小', info?.size === created.json?.item?.size, `${info?.size} vs ${created.json?.item?.size}`)
+
+  const missing = await call('POST', '/open-path?id=nope')
+  check('open-path 未知 id → 404', missing.status === 404 && missing.json?.error === 'not-found', missing.json)
+
+  await call('POST', '/delete', { ids: [id] })
 }
 
 server.close()

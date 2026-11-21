@@ -38,45 +38,12 @@ export function build() {
   const anchor = '  function makeFactory() {'
   let client = replaceOnce(base, anchor, `${panel.replace(/\s+$/, '')}\n\n${anchor}`, 'makeFactory')
 
-  // 2) apply() 里解析 uiWorkspace + 定义 jumpToSession
+  // 2) apply() 里解析 uiWorkspace + jumpToSession，并定义 DSH 文档面板的 openDocument
   client = replaceOnce(
     client,
-    `        const Section = makeSettings({ useState, useEffect, useCallback, useRef, t })
-`,
-    `        // 会话跳转：uiWorkspace 是客户端服务。用 ctx.inject 拿，拿不到也不影响面板其余部分，
-        // 只是「定位到聊天」会退化成一条提示。不写进 inject 数组，是为了不因为服务改名就让整个插件挂掉。
-        let uiWorkspace
-        try {
-          if (typeof ctx.inject === 'function') {
-            ctx.inject(['uiWorkspace'], (services) => {
-              uiWorkspace = services.uiWorkspace
-            })
-          }
-        } catch (error) {
-          console.warn('[DSH-library] uiWorkspace injection skipped:', error)
-        }
-        const jumpToSession = (sessionId) => {
-          let service = uiWorkspace
-          if (!service && typeof ctx.get === 'function') {
-            try {
-              service = ctx.get('uiWorkspace')
-            } catch {
-              service = undefined
-            }
-          }
-          if (!service || typeof service.openSession !== 'function') return false
-          try {
-            service.openSession(String(sessionId))
-            return true
-          } catch (error) {
-            console.warn('[DSH-library] openSession failed:', error)
-            return false
-          }
-        }
-
-        const Section = makeSettings({ useState, useEffect, useCallback, useRef, t })
-`,
-    'apply: uiWorkspace'
+    "        const Section = makeSettings({ useState, useEffect, useCallback, useRef, t })",
+    "        // 会话跳转：uiWorkspace 是客户端服务。用 ctx.inject 拿，拿不到也不影响面板其余部分，\n        // 只是「定位到聊天」会退化成一条提示。不写进 inject 数组，是为了不因为服务改名就让整个插件挂掉。\n        let uiWorkspace\n        try {\n          if (typeof ctx.inject === \"function\") {\n            ctx.inject([\"uiWorkspace\"], (services) => {\n              uiWorkspace = services.uiWorkspace\n            })\n          }\n        } catch (error) {\n          console.warn(\"[DSH-library] uiWorkspace injection skipped:\", error)\n        }\n        const clientService = (name, current) => {\n          if (current) return current\n          if (typeof ctx.get !== \"function\") return undefined\n          try {\n            return ctx.get(name)\n          } catch {\n            return undefined\n          }\n        }\n        const jumpToSession = (sessionId) => {\n          const service = clientService(\"uiWorkspace\", uiWorkspace)\n          if (!service || typeof service.openSession !== \"function\") return false\n          try {\n            service.openSession(String(sessionId))\n            return true\n          } catch (error) {\n            console.warn(\"[DSH-library] openSession failed:\", error)\n            return false\n          }\n        }\n\n        // ── DSH 自带的文档面板 ────────────────────────────────────────────\n        // sidebarRight 是客户端服务（右侧标签栏的路由与标签都归它管），layout 用来把主区域\n        // 从「本地资料库」切回对话：右侧标签栏只挂在对话上，主区域被全局面板占着时它没有会话。\n        let sidebarRight\n        let layoutService\n        try {\n          if (typeof ctx.inject === \"function\") {\n            ctx.inject([\"sidebarRight\"], (services) => {\n              sidebarRight = services.sidebarRight\n            })\n            ctx.inject([\"layout\"], (services) => {\n              layoutService = services.layout\n            })\n          }\n        } catch (error) {\n          console.warn(\"[DSH-library] sidebarRight injection skipped:\", error)\n        }\n\n        // dsh-resource://file/session/<sid>/<path>：逐段 encodeURIComponent，盘符的冒号保持字面。\n        const addressSegment = (segment) => encodeURIComponent(String(segment)).replace(/%3A/gi, \":\")\n        const sessionFileAddress = (sessionId, path) => {\n          const normalized = String(path || \"\").replace(/\\\\/g, \"/\").replace(/^(?:\\.\\/)+/, \"\")\n          const encoded = normalized.split(\"/\").map(addressSegment).join(\"/\")\n          return \"dsh-resource://file/session/\" + addressSegment(sessionId) + \"/\" + encoded\n        }\n        const mountedSessionId = (service) => {\n          try {\n            const value = service && service.mounted && service.mounted.getSnapshot ? service.mounted.getSnapshot() : \"\"\n            return typeof value === \"string\" ? value : \"\"\n          } catch {\n            return \"\"\n          }\n        }\n\n        /**\n         * 交给 DSH 自带的文档预览标签页：markdown / 图片 / PDF / Office / 代码都由它挑渲染器。\n         * 拿不到服务（旧版 DSH）或拿不到会话时返回 false，面板那边会退回自己的只读预览。\n         */\n        const openDocument = async (item) => {\n          const id = String(item && item.id ? item.id : \"\")\n          if (!id) return false\n          const service = clientService(\"sidebarRight\", sidebarRight)\n          if (!service || typeof service.openResource !== \"function\") return false\n          const layout = clientService(\"layout\", layoutService)\n          try {\n            const snapshot = layout && layout.panelInfo && layout.panelInfo.getSnapshot ? layout.panelInfo.getSnapshot() : null\n            if (snapshot && snapshot.activePanelId) layout.selectPanel(null)\n          } catch (error) {\n            console.warn(\"[DSH-library] selectPanel failed:\", error)\n          }\n          let data\n          try {\n            data = await panelApi(\"/open-path?id=\" + encodeURIComponent(id), { method: \"POST\" })\n          } catch (error) {\n            console.warn(\"[DSH-library] open-path failed:\", error)\n            return false\n          }\n          const target = String(data && data.path ? data.path : \"\")\n          if (!target) return false\n          // 切回对话之后右侧栏才认得出当前会话；面板刚切换时可能晚一帧，短暂重试。\n          let sessionId = mountedSessionId(service)\n          for (let attempt = 0; attempt < 6 && !sessionId; attempt += 1) {\n            await new Promise((resolve) => setTimeout(resolve, 40))\n            sessionId = mountedSessionId(service)\n          }\n          if (!sessionId) return false\n          try {\n            service.openResource(sessionFileAddress(sessionId, target))\n            return true\n          } catch (error) {\n            console.warn(\"[DSH-library] openResource failed:\", error)\n            return false\n          }\n        }\n        const Section = makeSettings({ useState, useEffect, useCallback, useRef, t })",
+    "apply: uiWorkspace + openDocument"
   )
 
   // 3) settings.section 之后追加 main + sidebar.panellist
@@ -98,7 +65,7 @@ export function build() {
         // 侧栏那个图标的 id 就是 main 槽里选中哪个面板的 key，两者必须用同一个字符串，
         // DSH 靠它把「点图标」和「渲染哪块面板」对上。
         injectPanelCss(typeof document === 'undefined' ? undefined : document)
-        const Panel = makePanel({ useState, useEffect, useCallback, useRef, language, jumpToSession })
+        const Panel = makePanel({ useState, useEffect, useCallback, useRef, language, jumpToSession, openDocument })
         const SidebarIcon = makeSidebarIcon()
 
         ctx.slots.inject('main', function* () {

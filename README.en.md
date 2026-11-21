@@ -91,7 +91,8 @@ Copy or link this repo to `profiles\<name>\node_modules\DSH-library` and add `"D
 - **Recently accessed**: sorted by `lastAccessAt`, with an access counter.
 - **Work-generated files**: parsed from local session logs (`deliverables/presented` events plus files written by `write`/`edit` tools), grouped per session. **Jump to chat** calls `uiWorkspace.openSession`; **Save to library** imports the file from disk so every conversation can search it.
 - **Batch actions**: every row has a checkbox; a selection bar offers batch move, batch note (append), zip download and batch delete (with confirmation).
-- **Preview and editing**: the right pane renders the extracted text of the selected file (long text pages in). Text files can be edited in place — `Ctrl+S` writes back to disk and reindexes; PDF, images and Office files must be downloaded, edited, then uploaded again.
+- **Opening a file**: clicking a row hands the file to DSH's own document tab — markdown rendering, images, PDF, Office and code are picked by extension. The panel first switches the central area back to the conversation (the right tab bar only exists there) and then opens `dsh-resource://file/session/<session>/<path>`; a `POST /open-path` route materializes `open/<id>/<file name>` as a hard link so the tab shows the name you gave it. If the DSH build has no `sidebarRight` service, the panel falls back to its own read-only text preview.
+- **Read-only library**: the plugin never rewrites your files. To change one, download it, edit it, and upload it again (same name → you are asked whether to replace).
 
 ## Data layout
 
@@ -121,7 +122,7 @@ Item fields: `id`, `name`, `ext`, `mime`, `size`, `sha256`, `kind`, `createdAt`,
 
 Prefix `/dsh-local-library`, same-origin, no auth (it sits outside DSH's auth layer):
 
-`GET /list?q=&limit=`, `GET /tree`, `GET /stats`, `GET|PUT /config`, `POST /upload?name=&dup=&tags=&folder=&path=&remark=`, `PATCH /item?id=`, `DELETE /item?id=`, `GET /download?id=`, `POST /bundle`, `POST /reindex?all=1`, `GET /recent?limit=`, `POST /touch?id=`, `GET /preview?id=&offset=&maxChars=`, `GET /workfiles?limit=`, `PUT /file?id=`, `POST /delete`, `POST /remark`, `POST /import-path`, `POST /folder`, `PATCH /folder?id=`, `DELETE /folder?id=&recursive=0|1`, `POST /move`.
+`GET /list?q=&limit=`, `GET /tree`, `GET /stats`, `GET|PUT /config`, `POST /upload?name=&dup=&tags=&folder=&path=&remark=`, `PATCH /item?id=`, `DELETE /item?id=`, `GET /download?id=`, `POST /bundle`, `POST /reindex?all=1`, `GET /recent?limit=`, `POST /touch?id=`, `GET /preview?id=&offset=&maxChars=`, `GET /workfiles?limit=`, `PUT /file?id=`, `POST /delete`, `POST /remark`, `POST /open-path?id=`, `POST /import-path`, `POST /folder`, `PATCH /folder?id=`, `DELETE /folder?id=&recursive=0|1`, `POST /move`.
 
 ## Tools
 

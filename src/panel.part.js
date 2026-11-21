@@ -353,7 +353,7 @@
     }
   }
 
-  function makePanel({ useState, useEffect, useCallback, useRef, language, jumpToSession }) {
+  function makePanel({ useState, useEffect, useCallback, useRef, language, jumpToSession, openDocument }) {
     const dict = language === 'en' ? PANEL_EN : PANEL_ZH
     const t = (key, ...args) => {
       const value = dict[key]
@@ -385,9 +385,6 @@
       const [anchorId, setAnchorId] = useState(null)
       const [moveMenu, setMoveMenu] = useState(false)
       const [batchDraft, setBatchDraft] = useState(null)
-      const [editMode, setEditMode] = useState(false)
-      const [draft, setDraft] = useState('')
-      const [saving, setSaving] = useState(false)
       const fileInput = useRef(null)
       const dirInput = useRef(null)
       const noticeTimer = useRef(undefined)
@@ -579,8 +576,6 @@
       }
 
       const openPreview = async (item) => {
-        setEditMode(false)
-        setDraft('')
         setPreviewLoading(true)
         setPreview({ item, text: '', total: 0 })
         try {
@@ -876,50 +871,27 @@
         }
       }
 
-      const startEditText = async () => {
-        if (!preview) return
-        if (preview.item.kind !== 'text') {
-          toast(t('notEditable'), true)
+      /**
+       * 点文件：交给 DSH 自带的文档面板（markdown / PDF / 图片 / Office / 代码都认得），
+       * 拿不到那个服务（旧版 DSH）就退回面板里的只读预览。
+       */
+      const openItem = (item) => {
+        let pending = null
+        try {
+          if (typeof openDocument === 'function') pending = openDocument(item)
+        } catch (error) {
+          console.warn('[DSH-library] 打开文档面板失败：', error)
+        }
+        if (!pending || typeof pending.then !== 'function') {
+          openPreview(item)
           return
         }
-        try {
-          setSaving(true)
-          const data = await panelApi(`/preview?id=${encodeURIComponent(preview.item.id)}&maxChars=200000`)
-          setPreview({ item: data.item || preview.item, text: data.text || '', total: data.total || 0 })
-          setDraft(data.text || '')
-          setEditMode(true)
-        } catch (error) {
-          toast(t('loadFailed', String(error?.message || error)), true)
-        } finally {
-          setSaving(false)
-        }
-      }
-
-      const cancelEditText = () => {
-        setEditMode(false)
-        setDraft('')
-      }
-
-      const saveEditText = async () => {
-        if (!preview) return
-        try {
-          setSaving(true)
-          const data = await panelApi(`/file?id=${encodeURIComponent(preview.item.id)}`, {
-            method: 'PUT',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ text: draft })
-          })
-          const nextText = data.text === undefined ? draft : data.text
-          setPreview({ item: data.item || preview.item, text: nextText, total: nextText.length })
-          setEditMode(false)
-          setDraft('')
-          toast(t('savedOk'))
-          await refresh(true)
-        } catch (error) {
-          toast(t('loadFailed', String(error?.message || error)), true)
-        } finally {
-          setSaving(false)
-        }
+        pending.then(
+          (opened) => {
+            if (!opened) openPreview(item)
+          },
+          () => openPreview(item)
+        )
       }
 
       const renderBatchBar = () => {
@@ -994,7 +966,7 @@
               draggable: !isEditingName && !isEditingRemark,
               onDragStart: (event) => onRowDragStart(event, item),
               onDragEnd: () => setDraggingIds([]),
-              onClick: () => openPreview(item)
+              onClick: () => openItem(item)
             },
             [
               h('span', { key: 'sel', className: 'llp-check' }, [
@@ -1335,21 +1307,6 @@
                 },
                 t('remark')
               ),
-              item.kind === 'text'
-                ? h(
-                    'button',
-                    {
-                      key: 'edit',
-                      className: 'llp-mini',
-                      disabled: saving,
-                      onClick: () => (editMode ? saveEditText() : startEditText())
-                    },
-                    editMode ? t('save') : t('edit')
-                  )
-                : null,
-              editMode
-                ? h('button', { key: 'esc', className: 'llp-mini', onClick: cancelEditText }, t('cancel'))
-                : null,
               h(
                 'button',
                 {
@@ -1362,30 +1319,11 @@
             ])
           ]),
           item.remark ? h('div', { key: 'remark', className: 'llp-pvremark' }, item.remark) : null,
-          editMode
-            ? h('textarea', {
-                key: 'text',
-                className: 'llp-editor',
-                value: draft,
-                spellCheck: false,
-                onChange: (event) => setDraft(event.target.value),
-                onKeyDown: (event) => {
-                  if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 's') {
-                    event.preventDefault()
-                    saveEditText()
-                  } else if (event.key === 'Escape') {
-                    cancelEditText()
-                  }
-                }
-              })
-            : h(
-                'div',
-                { key: 'text', className: 'llp-pvtext' },
-                previewLoading ? t('loading') : preview.text ? preview.text : t('noText')
-              ),
-          editMode
-            ? h('div', { key: 'editbar', className: 'llp-hint', style: { padding: '0 14px 10px' } }, t('editHint'))
-            : null
+          h(
+            'div',
+            { key: 'text', className: 'llp-pvtext' },
+            previewLoading ? t('loading') : preview.text ? preview.text : t('noText')
+          )
         ])
       }
 
