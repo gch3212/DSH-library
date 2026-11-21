@@ -68,7 +68,25 @@
     missing: '已不在磁盘上',
     sessionFiles: (n) => `${n} 个文件`,
     breadcrumbRoot: '资料库',
-    parentFolder: '返回上一层'
+    parentFolder: '返回上一层',
+    selectAll: '全选',
+    clearSel: '取消选择',
+    selectedN: (n) => `已选 ${n} 项`,
+    batchMove: '移到…',
+    batchRemark: '批量备注',
+    batchDownload: '打包下载',
+    batchDelete: (n) => `删除 ${n} 项`,
+    toRoot: '资料库根目录',
+    confirmRemoveMany: (n) => `从资料库移除选中的 ${n} 个文件？磁盘上的原文件不受影响。`,
+    remarkAppendHint: '追加到每份文件已有的备注后面',
+    applyRemark: '写入备注',
+    remarkSaved: (n) => `已写入 ${n} 条备注`,
+    edit: '编辑',
+    save: '保存',
+    cancel: '取消',
+    savedOk: '已写回文件',
+    notEditable: '这个类型不能在面板里直接改：PDF、图片、Office 只能下载后改完再上传。',
+    editHint: 'Ctrl+S 保存 · Esc 退出编辑'
   }
 
   const PANEL_EN = {
@@ -129,7 +147,25 @@
     missing: 'no longer on disk',
     sessionFiles: (n) => `${n} file(s)`,
     breadcrumbRoot: 'Library',
-    parentFolder: 'Up one level'
+    parentFolder: 'Up one level',
+    selectAll: 'Select all',
+    clearSel: 'Clear',
+    selectedN: (n) => `${n} selected`,
+    batchMove: 'Move to…',
+    batchRemark: 'Batch note',
+    batchDownload: 'Download zip',
+    batchDelete: (n) => `Delete ${n}`,
+    toRoot: 'Library root',
+    confirmRemoveMany: (n) => `Remove ${n} selected file(s) from the library? The originals on disk are untouched.`,
+    remarkAppendHint: 'Appended after each file\'s existing note',
+    applyRemark: 'Apply note',
+    remarkSaved: (n) => `Note written to ${n} file(s)`,
+    edit: 'Edit',
+    save: 'Save',
+    cancel: 'Cancel',
+    savedOk: 'Saved to file',
+    notEditable: 'This type cannot be edited here: PDF, images and Office files must be downloaded, edited, then uploaded again.',
+    editHint: 'Ctrl+S to save · Esc to leave'
   }
 
   function panelCssText() {
@@ -200,7 +236,15 @@
       '.llp-toast.err{background:rgba(190,45,50,.94)}',
       '.llp-wrap{position:relative;display:flex;flex-direction:column;height:100%;min-height:0}',
       '.llp-loading{opacity:.55;padding:10px 16px;font-size:12.5px}',
-      '.llp-hint{font-size:11.5px;opacity:.45;padding:2px 8px}'
+      '.llp-hint{font-size:11.5px;opacity:.45;padding:2px 8px}',
+      '.llp-check{display:flex;align-items:center;justify-content:center;width:16px;flex:none;opacity:.5}',
+      '.llp-check input{cursor:pointer;margin:0}',
+      '.llp-batch{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 16px;border-bottom:1px solid var(--dsw-alias-border-l2,rgba(127,127,127,.22));background:rgba(127,127,127,.06)}',
+      '.llp-batchcount{font-size:12px;font-weight:600;margin-right:2px}',
+      '.llp-movemenu{display:flex;flex-wrap:wrap;gap:4px;padding-top:4px;width:100%}',
+      '.llp-moveopt{font-size:11.5px;padding:3px 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2,rgba(127,127,127,.3));background:transparent;color:inherit;cursor:pointer;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.llp-batchremark{display:flex;flex-direction:column;gap:6px;width:100%;padding-top:4px}',
+      '.llp-editor{flex:1;min-height:0;margin:0;border:0;outline:none;resize:none;padding:12px 14px 24px;background:transparent;color:inherit;font:inherit;font-size:12.5px;line-height:1.65;white-space:pre-wrap;word-break:break-word;tab-size:2}'
     ].join('\n')
   }
 
@@ -337,6 +381,13 @@
       const [busy, setBusy] = useState('')
       const [pending, setPending] = useState([])
       const [previewLoading, setPreviewLoading] = useState(false)
+      const [selected, setSelected] = useState([])
+      const [anchorId, setAnchorId] = useState(null)
+      const [moveMenu, setMoveMenu] = useState(false)
+      const [batchDraft, setBatchDraft] = useState(null)
+      const [editMode, setEditMode] = useState(false)
+      const [draft, setDraft] = useState('')
+      const [saving, setSaving] = useState(false)
       const fileInput = useRef(null)
       const dirInput = useRef(null)
       const noticeTimer = useRef(undefined)
@@ -528,6 +579,8 @@
       }
 
       const openPreview = async (item) => {
+        setEditMode(false)
+        setDraft('')
         setPreviewLoading(true)
         setPreview({ item, text: '', total: 0 })
         try {
@@ -723,6 +776,212 @@
           ])
         })
 
+      const currentIds = () => {
+        if (query.trim()) return (hits || []).map((row) => row.id)
+        if (tab === 'recent') return (recent || []).map((row) => row.id)
+        if (tab === 'work') return []
+        return itemsIn(folderId).map((row) => row.id)
+      }
+
+      const toggleSelect = (item, event) => {
+        const ids = currentIds()
+        if (event && event.shiftKey && anchorId && anchorId !== item.id) {
+          const from = ids.indexOf(anchorId)
+          const to = ids.indexOf(item.id)
+          if (from >= 0 && to >= 0) {
+            const [a, b] = from < to ? [from, to] : [to, from]
+            const range = ids.slice(a, b + 1)
+            setSelected((current) => Array.from(new Set([...current, ...range])))
+            return
+          }
+        }
+        setAnchorId(item.id)
+        setSelected((current) =>
+          current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id]
+        )
+      }
+
+      const clearSelection = () => {
+        setSelected([])
+        setAnchorId(null)
+        setMoveMenu(false)
+        setBatchDraft(null)
+      }
+
+      const runBatchMove = async (target) => {
+        const ids = selected.slice()
+        setMoveMenu(false)
+        clearSelection()
+        await moveItemsTo(ids, target)
+      }
+
+      const runBatchDelete = async () => {
+        const ids = selected.slice()
+        if (ids.length === 0) return
+        if (!window.confirm(t('confirmRemoveMany', ids.length))) return
+        try {
+          const data = await panelApi('/delete', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ ids })
+          })
+          toast(t('removed', data.removed || 0))
+          if (preview && ids.includes(preview.item.id)) setPreview(null)
+          clearSelection()
+          await refresh(true)
+        } catch (error) {
+          toast(t('loadFailed', String(error?.message || error)), true)
+        }
+      }
+
+      const runBatchDownload = async () => {
+        const ids = selected.slice()
+        if (ids.length === 0) return
+        try {
+          const response = await fetch(`${ROUTE}/bundle`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ ids })
+          })
+          if (!response.ok) throw new Error(`HTTP ${response.status}`)
+          const blob = await response.blob()
+          const url = URL.createObjectURL(blob)
+          const link = document.createElement('a')
+          link.href = url
+          link.download = `library-${new Date().toISOString().slice(0, 10)}.zip`
+          document.body.appendChild(link)
+          link.click()
+          link.remove()
+          setTimeout(() => URL.revokeObjectURL(url), 4000)
+        } catch (error) {
+          toast(t('loadFailed', String(error?.message || error)), true)
+        }
+      }
+
+      const applyBatchRemark = async () => {
+        const ids = selected.slice()
+        const value = String(batchDraft || '').trim()
+        if (ids.length === 0 || value === '') return
+        try {
+          const data = await panelApi('/remark', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ ids, remark: value, mode: 'append' })
+          })
+          toast(t('remarkSaved', data.updated || 0))
+          clearSelection()
+          await refresh(true)
+        } catch (error) {
+          toast(t('loadFailed', String(error?.message || error)), true)
+        }
+      }
+
+      const startEditText = async () => {
+        if (!preview) return
+        if (preview.item.kind !== 'text') {
+          toast(t('notEditable'), true)
+          return
+        }
+        try {
+          setSaving(true)
+          const data = await panelApi(`/preview?id=${encodeURIComponent(preview.item.id)}&maxChars=200000`)
+          setPreview({ item: data.item || preview.item, text: data.text || '', total: data.total || 0 })
+          setDraft(data.text || '')
+          setEditMode(true)
+        } catch (error) {
+          toast(t('loadFailed', String(error?.message || error)), true)
+        } finally {
+          setSaving(false)
+        }
+      }
+
+      const cancelEditText = () => {
+        setEditMode(false)
+        setDraft('')
+      }
+
+      const saveEditText = async () => {
+        if (!preview) return
+        try {
+          setSaving(true)
+          const data = await panelApi(`/file?id=${encodeURIComponent(preview.item.id)}`, {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ text: draft })
+          })
+          const nextText = data.text === undefined ? draft : data.text
+          setPreview({ item: data.item || preview.item, text: nextText, total: nextText.length })
+          setEditMode(false)
+          setDraft('')
+          toast(t('savedOk'))
+          await refresh(true)
+        } catch (error) {
+          toast(t('loadFailed', String(error?.message || error)), true)
+        } finally {
+          setSaving(false)
+        }
+      }
+
+      const renderBatchBar = () => {
+        const flat = folders.filter((folder) => folder && folder.id)
+        return h('div', { key: 'batchbar', className: 'llp-batch' }, [
+          h('span', { key: 'n', className: 'llp-batchcount' }, t('selectedN', selected.length)),
+          h('button', { key: 'all', className: 'llp-mini', onClick: () => setSelected(currentIds()) }, t('selectAll')),
+          h(
+            'button',
+            {
+              key: 'mv',
+              className: 'llp-mini',
+              onClick: () => {
+                setBatchDraft(null)
+                setMoveMenu((value) => !value)
+              }
+            },
+            t('batchMove')
+          ),
+          h(
+            'button',
+            {
+              key: 'rmk',
+              className: 'llp-mini',
+              onClick: () => {
+                setMoveMenu(false)
+                setBatchDraft(batchDraft === null ? '' : null)
+              }
+            },
+            t('batchRemark')
+          ),
+          h('button', { key: 'zip', className: 'llp-mini', onClick: runBatchDownload }, t('batchDownload')),
+          h('button', { key: 'del', className: 'llp-mini danger', onClick: runBatchDelete }, t('batchDelete', selected.length)),
+          h('button', { key: 'cl', className: 'llp-mini', onClick: clearSelection }, t('clearSel')),
+          moveMenu
+            ? h('div', { key: 'menu', className: 'llp-movemenu' }, [
+                h('button', { key: 'root', className: 'llp-moveopt', onClick: () => runBatchMove('') }, t('toRoot')),
+                ...flat.map((folder) =>
+                  h(
+                    'button',
+                    { key: folder.id, className: 'llp-moveopt', onClick: () => runBatchMove(folder.id) },
+                    folder.path ? `${folder.path}` : folder.name
+                  )
+                )
+              ])
+            : null,
+          batchDraft === null
+            ? null
+            : h('div', { key: 'rmkbox', className: 'llp-batchremark' }, [
+                h('div', { key: 'hint', className: 'llp-hint' }, t('remarkAppendHint')),
+                h('textarea', {
+                  key: 'ta',
+                  className: 'llp-input',
+                  rows: 2,
+                  value: batchDraft,
+                  onChange: (event) => setBatchDraft(event.target.value)
+                }),
+                h('button', { key: 'go', className: 'llp-mini main', onClick: applyBatchRemark }, t('applyRemark'))
+              ])
+        ])
+      }
+
       const renderItemRow = (item) => {
         const isEditingName = editing && editing.kind === 'item' && editing.id === item.id && editing.field === 'name'
         const isEditingRemark = editing && editing.kind === 'item' && editing.id === item.id && editing.field === 'remark'
@@ -738,6 +997,19 @@
               onClick: () => openPreview(item)
             },
             [
+              h('span', { key: 'sel', className: 'llp-check' }, [
+                h('input', {
+                  key: 'c',
+                  type: 'checkbox',
+                  checked: selected.includes(item.id),
+                  'aria-label': t('selectAll'),
+                  onClick: (event) => {
+                    event.stopPropagation()
+                    toggleSelect(item, event)
+                  },
+                  onChange: () => {}
+                })
+              ]),
               h('div', { key: 'icon', className: 'llp-ico' }, panelIcon('file', 15)),
               h('div', { key: 'main', className: 'llp-rowmain' }, [
                 h('div', { key: 'name', className: 'llp-rowname', title: item.name }, item.name),
@@ -1063,6 +1335,21 @@
                 },
                 t('remark')
               ),
+              item.kind === 'text'
+                ? h(
+                    'button',
+                    {
+                      key: 'edit',
+                      className: 'llp-mini',
+                      disabled: saving,
+                      onClick: () => (editMode ? saveEditText() : startEditText())
+                    },
+                    editMode ? t('save') : t('edit')
+                  )
+                : null,
+              editMode
+                ? h('button', { key: 'esc', className: 'llp-mini', onClick: cancelEditText }, t('cancel'))
+                : null,
               h(
                 'button',
                 {
@@ -1075,11 +1362,30 @@
             ])
           ]),
           item.remark ? h('div', { key: 'remark', className: 'llp-pvremark' }, item.remark) : null,
-          h(
-            'div',
-            { key: 'text', className: 'llp-pvtext' },
-            previewLoading ? t('loading') : preview.text ? preview.text : t('noText')
-          )
+          editMode
+            ? h('textarea', {
+                key: 'text',
+                className: 'llp-editor',
+                value: draft,
+                spellCheck: false,
+                onChange: (event) => setDraft(event.target.value),
+                onKeyDown: (event) => {
+                  if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 's') {
+                    event.preventDefault()
+                    saveEditText()
+                  } else if (event.key === 'Escape') {
+                    cancelEditText()
+                  }
+                }
+              })
+            : h(
+                'div',
+                { key: 'text', className: 'llp-pvtext' },
+                previewLoading ? t('loading') : preview.text ? preview.text : t('noText')
+              ),
+          editMode
+            ? h('div', { key: 'editbar', className: 'llp-hint', style: { padding: '0 14px 10px' } }, t('editHint'))
+            : null
         ])
       }
 
@@ -1253,6 +1559,7 @@
                   pending.map((row) => `${row.name} ${row.pct}%`).join('   ')
                 )
               : null,
+            selected.length > 0 ? renderBatchBar() : null,
             h(
               'div',
               {

@@ -90,7 +90,8 @@ Copy or link this repo to `profiles\<name>\node_modules\DSH-library` and add `"D
 - **Notes**: folders and files both take a human sentence ("advisor's version", "for submission"). Notes are searchable and visible to the model.
 - **Recently accessed**: sorted by `lastAccessAt`, with an access counter.
 - **Work-generated files**: parsed from local session logs (`deliverables/presented` events plus files written by `write`/`edit` tools), grouped per session. **Jump to chat** calls `uiWorkspace.openSession`; **Save to library** imports the file from disk so every conversation can search it.
-- **Preview**: right-hand pane renders the extracted text of the selected file (long text pages in).
+- **Batch actions**: every row has a checkbox; a selection bar offers batch move, batch note (append), zip download and batch delete (with confirmation).
+- **Preview and editing**: the right pane renders the extracted text of the selected file (long text pages in). Text files can be edited in place — `Ctrl+S` writes back to disk and reindexes; PDF, images and Office files must be downloaded, edited, then uploaded again.
 
 ## Data layout
 
@@ -120,7 +121,7 @@ Item fields: `id`, `name`, `ext`, `mime`, `size`, `sha256`, `kind`, `createdAt`,
 
 Prefix `/dsh-local-library`, same-origin, no auth (it sits outside DSH's auth layer):
 
-`GET /list?q=&limit=`, `GET /tree`, `GET /stats`, `GET|PUT /config`, `POST /upload?name=&dup=&tags=&folder=&path=&remark=`, `PATCH /item?id=`, `DELETE /item?id=`, `GET /download?id=`, `POST /bundle`, `POST /reindex?all=1`, `GET /recent?limit=`, `POST /touch?id=`, `GET /preview?id=&offset=&maxChars=`, `GET /workfiles?limit=`, `POST /import-path`, `POST /folder`, `PATCH /folder?id=`, `DELETE /folder?id=&recursive=0|1`, `POST /move`.
+`GET /list?q=&limit=`, `GET /tree`, `GET /stats`, `GET|PUT /config`, `POST /upload?name=&dup=&tags=&folder=&path=&remark=`, `PATCH /item?id=`, `DELETE /item?id=`, `GET /download?id=`, `POST /bundle`, `POST /reindex?all=1`, `GET /recent?limit=`, `POST /touch?id=`, `GET /preview?id=&offset=&maxChars=`, `GET /workfiles?limit=`, `PUT /file?id=`, `POST /delete`, `POST /remark`, `POST /import-path`, `POST /folder`, `PATCH /folder?id=`, `DELETE /folder?id=&recursive=0|1`, `POST /move`.
 
 ## Tools
 

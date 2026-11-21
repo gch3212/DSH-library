@@ -222,6 +222,51 @@ const sessionRow = sessionRows.find((row) => row.id === sessionId)
 check('sessions 里有这条会话', Boolean(sessionRow), sessionRows)
 check('会话 label 用标题', typeof sessionRow?.label === 'string' && sessionRow.label.includes('季度汇报'), sessionRow?.label)
 
+/* ── 12. 批量操作与就地编辑 ─────────────────────────────── */
+{
+  const created = await call('POST', '/upload?name=edit-me.md', Buffer.from('第一版正文', 'utf8'), 'text/markdown')
+  const editId = created.json?.item?.id
+  check('编辑用文件创建成功', Boolean(editId), created.status)
+
+  const edited = await call('PUT', `/file?id=${encodeURIComponent(editId)}`, { text: '第二版正文\n多了一行' })
+  check('PUT /file 状态 200', edited.status === 200, edited.status)
+  check('PUT /file 回写正文', edited.json?.text === '第二版正文\n多了一行', edited.json?.text)
+  check('PUT /file 更新了大小', edited.json?.item?.size === Buffer.byteLength('第二版正文\n多了一行', 'utf8'), edited.json?.item?.size)
+  check('PUT /file 重置了索引', edited.json?.item?.indexed === true, edited.json?.item?.indexed)
+
+  const reread = await call('GET', `/preview?id=${encodeURIComponent(editId)}&maxChars=200`)
+  check('重新预览读到新正文', String(reread.json?.text || '').startsWith('第二版正文'), reread.json?.text)
+  const found = await call('GET', `/list`)
+  const afterEdit = (found.json?.items || []).find((row) => row.id === editId)
+  check('列表里 textChars 跟着变', afterEdit?.textChars === '第二版正文\n多了一行'.length, afterEdit?.textChars)
+
+  const binary = (found.json?.items || []).find((row) => row.kind !== 'text')
+  if (binary) {
+    const refused = await call('PUT', `/file?id=${encodeURIComponent(binary.id)}`, { text: '不该写进去' })
+    check('二进制文件拒绝编辑 400', refused.status === 400 && refused.json?.error === 'not-editable', refused.json)
+  }
+
+  const second = await call('POST', '/upload?name=second.md', Buffer.from('另一份', 'utf8'), 'text/markdown')
+  const secondId = second.json?.item?.id
+  const remarked = await call('POST', '/remark', { ids: [editId, secondId], remark: '导师组会要用', mode: 'append' })
+  check('POST /remark 更新 2 条', remarked.json?.updated === 2, remarked.json?.updated)
+  const afterRemark = await call('GET', '/list')
+  const noted = (afterRemark.json?.items || []).find((row) => row.id === editId)
+  check('备注写进了条目', noted?.remark === '导师组会要用', noted?.remark)
+  const appended = await call('POST', '/remark', { ids: [editId], remark: '再补一句', mode: 'append' })
+  check('append 模式追加', appended.json?.updated === 1, appended.json?.updated)
+  const twice = await call('GET', '/list')
+  const note2 = (twice.json?.items || []).find((row) => row.id === editId)
+  check('两次备注用换行拼起来', note2?.remark === '导师组会要用\n再补一句', note2?.remark)
+
+  const deleted = await call('POST', '/delete', { ids: [editId, secondId] })
+  check('POST /delete 删掉 2 个', deleted.json?.removed === 2, deleted.json?.removed)
+  const empty = await call('POST', '/delete', { ids: [] })
+  check('空选择 → 400', empty.status === 400 && empty.json?.error === 'empty-selection', empty.json)
+  const goneList = await call('GET', '/list')
+  check('删掉的条目不在列表里', !(goneList.json?.items || []).some((row) => row.id === editId), editId)
+}
+
 server.close()
 console.log(`\n${failures.length === 0 ? '全部通过' : `失败 ${failures.length} 项：${failures.join(' / ')}`}`)
 process.exit(failures.length === 0 ? 0 : 1)

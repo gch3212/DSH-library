@@ -31,7 +31,8 @@
 - **备注**：文件夹和文件都能写一句人话（"导师给的那版"、"投稿用"）。备注参与检索，也会出现在模型的 `library_list` / `library_search` / `library_read` 结果里，和文件名同权重。
 - **最近访问**：按 `lastAccessAt` 排，显示访问次数。
 - **工作生成文件**：读本机会话日志（`deliverables/presented` 交付物 + `write`/`edit` 类工具写过盘的文件），按会话分组。每行两个按钮：**定位到聊天**（跳回原会话）、**存入资料库**（把磁盘上的文件收进库，之后每个对话都能检索到它）。
-- **预览**：点一行文件在右栏看抽好的纯文本（长文可继续加载），不重新解析原文件。
+- **批量操作**：每行前面有复选框，选中后上方出现批量条——批量移动到文件夹、批量备注（追加）、打包下载成一个 zip、批量删除（有确认）。
+- **预览与编辑**：点一行文件在右栏看抽好的纯文本（长文可继续加载），不重新解析原文件；文本类文件点「编辑」可以直接改，`Ctrl+S` 写回磁盘并重建索引，PDF / 图片 / Office 只能下载改完再上传。
 
 ## 安装
 
@@ -175,6 +176,9 @@ $DSH_HOME\local-library\          # 默认 %APPDATA%\dsh-desktop\harness\local-l
 | GET | `/preview?id=&offset=&maxChars=` | `{item, text, offset, total, hasText}`，并记一次访问 |
 | GET | `/workfiles?limit=` | `{files, sessions}`：写盘/交付文件清单 + 会话元数据（标题、cwd、交付数） |
 | POST | `/import-path` | body `{path, folderId?, remark?}`，把磁盘上的文件收进库 |
+| PUT | `/file?id=` | body `{text}`，改文本类文件的正文（同步大小 / sha256 / 索引），`{item, text}` |
+| POST | `/delete` | body `{ids}`，批量移除，`{removed}` |
+| POST | `/remark` | body `{ids, remark, mode?}`（`append` 追加），`{updated}` |
 | POST | `/folder` | body `{name, parentId?, remark?}`，建文件夹（同层同名幂等），`{folder}` |
 | PATCH | `/folder?id=` | body `{name?, remark?, parentId?}`，改名 / 改备注 / 移动（会防环） |
 | DELETE | `/folder?id=&recursive=0\|1` | 删除；非递归时里面的文件夹和文件上提到父目录，`{removedItems, removedFolders}` |

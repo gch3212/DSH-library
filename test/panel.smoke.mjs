@@ -266,7 +266,14 @@ const SLOT = {
   notice: 15,
   busy: 16,
   pending: 17,
-  previewLoading: 18
+  previewLoading: 18,
+  selected: 19,
+  anchorId: 20,
+  moveMenu: 21,
+  batchDraft: 22,
+  editMode: 23,
+  draft: 24,
+  saving: 25
 }
 
 function baseSeeds() {
@@ -290,6 +297,13 @@ function baseSeeds() {
   list[SLOT.busy] = ''
   list[SLOT.pending] = []
   list[SLOT.previewLoading] = false
+  list[SLOT.selected] = []
+  list[SLOT.anchorId] = null
+  list[SLOT.moveMenu] = false
+  list[SLOT.batchDraft] = null
+  list[SLOT.editMode] = false
+  list[SLOT.draft] = ''
+  list[SLOT.saving] = false
   return list
 }
 
@@ -435,6 +449,64 @@ function render(overrides = {}) {
   })
   check('没有 undefined 文案', !text.includes('undefined'), (text.match(/undefined/g) || []).length + ' 处')
   check('没有未翻译的 key（llp 文案里不该出现驼峰键名）', !/\b(panelTitle|allFiles|emptyRoot|folderNamePlaceholder)\b/.test(text), '')
+}
+
+// 多选：每行前面有复选框
+{
+  const { classes } = render({ tree: treePayload, folderId: 'lf-a', expanded: ['', 'lf-a'] })
+  check('文件行前有复选框', classes.has('llp-check'), [...classes].filter((c) => c.startsWith('llp-c')).join(','))
+}
+
+// 选中之后出现批量操作条
+{
+  const { classes, text } = render({ tree: treePayload, expanded: ['', 'lf-a'], selected: ['ll-1'] })
+  check('出现批量操作条', classes.has('llp-batch'), [...classes].filter((c) => c.startsWith('llp-b')).join(','))
+  check('显示已选数量', text.includes('已选 1 项'), text.slice(0, 400))
+  check('批量条按钮齐全', ['全选', '移到…', '批量备注', '打包下载', '删除 1 项', '取消选择'].every((word) => text.includes(word)), text.slice(0, 600))
+}
+
+// 批量移动：展开目标文件夹菜单
+{
+  const { classes, text } = render({
+    tree: treePayload,
+    expanded: ['', 'lf-a'],
+    selected: ['ll-1'],
+    moveMenu: true
+  })
+  check('移动菜单列出根目录', text.includes('资料库根目录'), text.slice(0, 500))
+  check('移动菜单列出文件夹路径', text.includes('论文/2026'), text.slice(0, 500))
+  check('移动菜单有样式', classes.has('llp-movemenu') && classes.has('llp-moveopt'))
+}
+
+// 批量备注：输入框 + 追加提示
+{
+  const { classes, text } = render({ tree: treePayload, selected: ['ll-1'], batchDraft: '' })
+  check('批量备注输入框', classes.has('llp-batchremark'), [...classes].filter((c) => c.startsWith('llp-ba')).join(','))
+  check('批量备注提示追加', text.includes('追加到每份文件已有的备注后面'), text.slice(0, 500))
+  check('批量备注有写入按钮', text.includes('写入备注'))
+}
+
+// 编辑态：文本文件可改
+{
+  const { classes, text } = render({
+    tree: treePayload,
+    preview: { item: treePayload.items[0], text: '正文摘要…', total: 6 },
+    editMode: true,
+    draft: '正文摘要…'
+  })
+  check('编辑态渲染 textarea', classes.has('llp-editor'), [...classes].filter((c) => c.startsWith('llp-e')).join(','))
+  check('编辑态不再显示只读正文', !classes.has('llp-pvtext'))
+  check('编辑态给出快捷键提示', text.includes('Ctrl+S 保存'), text.slice(0, 400))
+  check('编辑态按钮变成保存/取消', text.includes('保存') && text.includes('取消'))
+}
+
+// 只读态：可编辑的文本文件提供「编辑」按钮
+{
+  const { text } = render({
+    tree: treePayload,
+    preview: { item: treePayload.items[0], text: '正文摘要…', total: 6 }
+  })
+  check('预览里有编辑按钮', text.includes('编辑'), text.slice(0, 400))
 }
 
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`)
