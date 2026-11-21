@@ -16,6 +16,7 @@
 - **拖入整个文件夹会保留层级**：`论文/2026/投稿/x.pdf` 原样落成三级文件夹，不是摊平。
 - **最近访问**：按你真正读过 / 预览过的顺序排（模型调 `library_read` 也算一次访问）。
 - **本地工作生成文件**：按会话分组列出每个对话交付过、或写过盘的文件，每行可以**定位到聊天**或**存入资料库**。
+- **删错了能捞回来**：删除只是移进回收站（文件原地不动），30 天内可以还原；回收站里能单条还原、单条彻底删除、或一键清空。超期在下次启动时自动清理。
 - **每个新对话天然知道它存在**：插件往系统提示词里加一段说明，并注册 4 个工具，用户不必再说「我有一份资料」。
 - **重复检测**：同样的内容再传一次会问「覆盖 / 再存一份 / 跳过」。
 - **可检索正文**：`.md/.txt/.csv/.json/...`、`.docx`、`.xlsx`、`.pptx`、`.pdf` 抽成纯文本；PDF 优先用本机 PyMuPDF（中文更稳），失败回退零依赖流级抽取；配了视觉模型的话图片会被描述成文字参与检索。
@@ -32,6 +33,7 @@
 - **最近访问**：按 `lastAccessAt` 排，显示访问次数。
 - **工作生成文件**：读本机会话日志（`deliverables/presented` 交付物 + `write`/`edit` 类工具写过盘的文件），按会话分组。每行两个按钮：**定位到聊天**（跳回原会话）、**存入资料库**（把磁盘上的文件收进库，之后每个对话都能检索到它）。
 - **批量操作**：每行前面有复选框，选中后上方出现批量条——批量移动到文件夹、批量备注（追加）、打包下载成一个 zip、批量删除（有确认）。
+- **回收站**：删除的文件先进回收站，侧栏第四个入口就是它，带待清理数量角标。里面能**还原 / 彻底删除 / 清空回收站**，每条显示还剩几天。磁盘文件在「彻底删除」之前一直保留。
 - **打开文件**：点一行文件，面板会切回对话、在右侧栏用 DSH 自带的文档预览打开它——markdown 渲染、图片、PDF、Office、代码都按扩展名认；标题就是文件在库里显示的名字（宿主用硬链接给了一份同内容的临时路径）。右栏那个预览是 DSH 自己的，跟资源管理器里点开一个文件是一回事，不用在插件里再写一套。
 - **只读说明**：资料库不改写文件内容。要改就点「下载」拿原件改完再上传（同名会问是否替换）。
 
@@ -168,7 +170,7 @@ $DSH_HOME\local-library\          # 默认 %APPDATA%\dsh-desktop\harness\local-l
 | PUT | `/config` | body `{matchMode:"loose"\|"strict"}`，非法值 400 |
 | POST | `/upload?name=&dup=&tags=&folder=&path=&remark=` | body 为原始字节，流式落盘；`dup` = `reject`(默认)/`keep`/`replace`；`path` 是相对路径（`论文/2026/a.pdf`），宿主逐级建目录；同内容重复返回 **409** 带 `duplicate` |
 | PATCH | `/item?id=` | body `{name?, tags?, remark?, folderId?}` |
-| DELETE | `/item?id=` | 删除条目与原文件 |
+| DELETE | `/item?id=` | 删除条目（同样先进回收站） |
 | GET | `/download?id=` | 原文件回流，`content-disposition` 带 RFC5987 文件名 |
 | POST | `/bundle` | body `{ids:[]}`，返回 zip（最多 300 个） |
 | POST | `/reindex?all=1` | 重跑索引；不传 `all` 只补未建索引的 |
@@ -179,7 +181,11 @@ $DSH_HOME\local-library\          # 默认 %APPDATA%\dsh-desktop\harness\local-l
 | POST | `/import-path` | body `{path, folderId?, remark?}`，把磁盘上的文件收进库 |
 | PUT | `/file?id=` | body `{text}`，改文本类文件的正文（同步大小 / sha256 / 索引），`{item, text}` |
 | POST | `/open-path?id=` | 给 DSH 文档面板用的真实路径（`open/<id>/<文件名>` 硬链接），`{item, path, name}` |
-| POST | `/delete` | body `{ids}`，批量移除，`{removed}` |
+| POST | `/delete` | body `{ids}`，批量**移入回收站**（软删除），`{removed, trashed:true, ttlDays}` |
+| GET | `/trash` | `{items, count, ttlDays}`，回收站条目带 `trashedAt` / `trashDaysLeft` |
+| POST | `/restore` | body `{ids}`，从回收站还原，`{restored}` |
+| POST | `/purge` | body `{ids}`，彻底删除（连磁盘文件），`{purged}` |
+| POST | `/trash/empty` | 清空回收站，`{purged}` |
 | POST | `/remark` | body `{ids, remark, mode?}`（`append` 追加），`{updated}` |
 | POST | `/folder` | body `{name, parentId?, remark?}`，建文件夹（同层同名幂等），`{folder}` |
 | PATCH | `/folder?id=` | body `{name?, remark?, parentId?}`，改名 / 改备注 / 移动（会防环） |

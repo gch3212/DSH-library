@@ -290,6 +290,51 @@ check('会话 label 用标题', typeof sessionRow?.label === 'string' && session
   await call('POST', '/delete', { ids: [id] })
 }
 
+/* ── 14. 回收站：软删除 / 还原 / 彻底删除 / 清空 ─────────────── */
+{
+  const libRoot = join(home, 'local-library')
+  const a = await call('POST', '/upload?name=软删除甲.txt', Buffer.from('甲的内容', 'utf8'), 'text/plain')
+  const b = await call('POST', '/upload?name=软删除乙.txt', Buffer.from('乙的内容', 'utf8'), 'text/plain')
+  const idA = a.json?.item?.id
+  const idB = b.json?.item?.id
+  check('回收站用例建好 2 个文件', Boolean(idA && idB), [idA, idB])
+
+  // 前面的用例也会把条目丢进回收站，所以这里只比较增量。
+  const trashBefore = (await call('GET', '/trash')).json?.count || 0
+  const soft = await call('POST', '/delete', { ids: [idA] })
+  check('删除改成软删除', soft.json?.removed === 1 && soft.json?.trashed === true, soft.json)
+  check('软删除回报保留天数', soft.json?.ttlDays === 30, soft.json?.ttlDays)
+
+  const afterDelete = await call('GET', '/list')
+  check('软删除后不在列表里', !(afterDelete.json?.items || []).some((row) => row.id === idA))
+  const searched = await call('GET', '/list?q=' + encodeURIComponent('甲的内容'))
+  check('软删除后检索不到', !(searched.json?.items || []).some((row) => row.id === idA))
+  const onDisk = await stat(join(libRoot, 'files', idA + '.txt')).catch(() => null)
+  check('软删除保留磁盘文件', Boolean(onDisk && onDisk.isFile()), onDisk)
+
+  const trash = await call('GET', '/trash')
+  check('GET /trash 多出 1 条', trash.json?.count === trashBefore + 1, trash.json?.count)
+  check('回收站条目带剩余天数', trash.json?.items?.[0]?.trashDaysLeft === 30, trash.json?.items?.[0]?.trashDaysLeft)
+
+  const restored = await call('POST', '/restore', { ids: [idA] })
+  check('还原 1 条', restored.json?.restored?.length === 1, restored.json)
+  const afterRestore = await call('GET', '/list')
+  check('还原后回到列表', (afterRestore.json?.items || []).some((row) => row.id === idA))
+
+  await call('POST', '/delete', { ids: [idA, idB] })
+  const purged = await call('POST', '/purge', { ids: [idB] })
+  check('彻底删除 1 条', purged.json?.purged?.length === 1, purged.json)
+  const purgedFile = await stat(join(libRoot, 'files', idB + '.txt')).catch(() => null)
+  check('彻底删除清掉磁盘文件', purgedFile === null, purgedFile)
+
+  const emptied = await call('POST', '/trash/empty')
+  check('清空回收站', emptied.json?.purged === trashBefore + 1, emptied.json?.purged)
+  const emptyTrash = await call('GET', '/trash')
+  check('清空后回收站为空', emptyTrash.json?.count === 0, emptyTrash.json?.count)
+  const emptyPurge = await call('POST', '/purge', { ids: [] })
+  check('空选择的 purge → 400', emptyPurge.status === 400 && emptyPurge.json?.error === 'empty-selection', emptyPurge.json)
+}
+
 server.close()
 console.log(`\n${failures.length === 0 ? '全部通过' : `失败 ${failures.length} 项：${failures.join(' / ')}`}`)
 process.exit(failures.length === 0 ? 0 : 1)

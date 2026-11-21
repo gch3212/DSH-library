@@ -11,6 +11,7 @@ A **local document library plugin for DSH Desktop**: one file cabinet shared acr
 ## Features
 
 - **Two entry points**: Settings → Local Library, and an icon on the workbench home sidebar that opens a full-page panel.
+- **Undo-friendly delete**: deleting only moves an item to the trash (files stay on disk) and it can be restored for 30 days; expired items are swept on the next start.
 - **Explorer-like file management**: folder tree, create / rename / delete folders, drag files into folders, breadcrumb navigation, inline rename.
 - **Notes on both folders and files**: notes and folder paths are indexed at the same weight as file names, and show up in the tool output the model sees (`位置：论文/2026`, `备注：…`).
 - **Drag a whole folder**: the directory tree is preserved (`论文/2026/投稿/x.pdf` becomes three nested folders), not flattened.
@@ -122,7 +123,7 @@ Item fields: `id`, `name`, `ext`, `mime`, `size`, `sha256`, `kind`, `createdAt`,
 
 Prefix `/dsh-local-library`, same-origin, no auth (it sits outside DSH's auth layer):
 
-`GET /list?q=&limit=`, `GET /tree`, `GET /stats`, `GET|PUT /config`, `POST /upload?name=&dup=&tags=&folder=&path=&remark=`, `PATCH /item?id=`, `DELETE /item?id=`, `GET /download?id=`, `POST /bundle`, `POST /reindex?all=1`, `GET /recent?limit=`, `POST /touch?id=`, `GET /preview?id=&offset=&maxChars=`, `GET /workfiles?limit=`, `PUT /file?id=`, `POST /delete`, `POST /remark`, `POST /open-path?id=`, `POST /import-path`, `POST /folder`, `PATCH /folder?id=`, `DELETE /folder?id=&recursive=0|1`, `POST /move`.
+`GET /list?q=&limit=`, `GET /tree`, `GET /stats`, `GET|PUT /config`, `POST /upload?name=&dup=&tags=&folder=&path=&remark=`, `PATCH /item?id=`, `DELETE /item?id=`, `GET /download?id=`, `POST /bundle`, `POST /reindex?all=1`, `GET /recent?limit=`, `POST /touch?id=`, `GET /preview?id=&offset=&maxChars=`, `GET /workfiles?limit=`, `PUT /file?id=`, `POST /delete` (soft: moves to trash), `GET /trash`, `POST /restore`, `POST /purge`, `POST /trash/empty`, `POST /remark`, `POST /open-path?id=`, `POST /import-path`, `POST /folder`, `PATCH /folder?id=`, `DELETE /folder?id=&recursive=0|1`, `POST /move`.
 
 ## Tools
 

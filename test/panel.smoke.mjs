@@ -104,6 +104,29 @@ globalThis.fetch = async (url) => {
   const send = (data) => ({ ok: true, status: 200, text: async () => JSON.stringify(data) })
   if (String(url).includes('/open-path')) return send({ path: openPath, name: '植物笔记.md' })
   if (String(url).includes('/tree')) return send(treePayload)
+  if (String(url).includes('/trash')) {
+    return send({
+      items: [
+        {
+          id: 'll-9',
+          name: '旧稿.docx',
+          ext: '.docx',
+          kind: 'other',
+          size: 2048,
+          trashedAt: '2026-11-21T10:00:00.000Z',
+          trashDaysLeft: 29,
+          folderId: '',
+          folderPath: '',
+          remark: '',
+          tags: [],
+          createdAt: '2026-11-20T10:00:00.000Z',
+          updatedAt: '2026-11-21T10:00:00.000Z'
+        }
+      ],
+      count: 1,
+      ttlDays: 30
+    })
+  }
   if (String(url).includes('/recent')) return send({ items: [treePayload.items[0]] })
   if (String(url).includes('/workfiles')) {
     return send({
@@ -284,7 +307,8 @@ const SLOT = {
   selected: 19,
   anchorId: 20,
   moveMenu: 21,
-  batchDraft: 22
+  batchDraft: 22,
+  trash: 23
 }
 
 function baseSeeds() {
@@ -312,6 +336,7 @@ function baseSeeds() {
   list[SLOT.anchorId] = null
   list[SLOT.moveMenu] = false
   list[SLOT.batchDraft] = null
+  list[SLOT.trash] = null
   return list
 }
 
@@ -492,6 +517,48 @@ function render(overrides = {}) {
   check('批量备注输入框', classes.has('llp-batchremark'), [...classes].filter((c) => c.startsWith('llp-ba')).join(','))
   check('批量备注提示追加', text.includes('追加到每份文件已有的备注后面'), text.slice(0, 500))
   check('批量备注有写入按钮', text.includes('写入备注'))
+}
+
+// 回收站：入口、列表、还原 / 彻底删除 / 清空
+{
+  const { classes, text } = render({ tree: treePayload })
+  check('侧栏有回收站入口', text.includes('回收站'), text.slice(0, 300))
+  void classes
+}
+
+{
+  const { classes, text } = render({
+    tree: treePayload,
+    tab: 'trash',
+    trash: [
+      {
+        id: 'll-9',
+        name: '旧稿.docx',
+        ext: '.docx',
+        kind: 'other',
+        size: 2048,
+        trashedAt: '2026-11-21T10:00:00.000Z',
+        trashDaysLeft: 29,
+        folderId: '',
+        folderPath: '',
+        remark: '',
+        tags: [],
+        createdAt: '2026-11-20T10:00:00.000Z',
+        updatedAt: '2026-11-21T10:00:00.000Z'
+      }
+    ]
+  })
+  check('回收站视图列出条目', text.includes('旧稿.docx'), text.slice(0, 500))
+  check('回收站说明保留天数', text.includes('回收站保留 30 天'), text.slice(0, 600))
+  check('回收站有还原按钮', text.includes('还原'))
+  check('回收站有彻底删除按钮', text.includes('彻底删除'))
+  check('回收站有清空入口', text.includes('清空回收站'))
+  void classes
+}
+
+{
+  const { text } = render({ tree: treePayload, tab: 'trash', trash: [] })
+  check('回收站空态文案', text.includes('回收站是空的'), text.slice(0, 300))
 }
 
 // 面板里不再自带编辑器（交给 DSH 自带的文档面板）
