@@ -161,7 +161,7 @@ $DSH_HOME\local-library\          # 默认 %APPDATA%\dsh-desktop\harness\local-l
 
 ## HTTP 接口
 
-前缀 `/dsh-local-library`，同源、无需鉴权（在 DSH 鉴权层之外，设置页与面板直接 fetch）。路径都是相对前缀的：
+前缀 `/dsh-local-library`。路由在 DSH 自己的路由表之外，所以每个请求进门先过一道访问检查（`connection.requestRejection()`；拿不到该服务时退回本机 Host/Origin 检查），跨站页面会被 403 挡掉。路径都是相对前缀的：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -282,7 +282,7 @@ node test/run-all.mjs    # 全部（api / tools / panel / plugin / bugfix / extr
 - 「定位到聊天」依赖客户端服务 `uiWorkspace.openSession`；拿不到时按钮会退化成一条提示，不影响其它功能。
 - 回收站保留 30 天，超期条目在**下次启动**时清理（不是定时任务）；「彻底删除」不进 Windows 回收站，删了就没了。
 - 拖拽上传靠浏览器的 `webkitGetAsEntry()`（Chromium 系都支持）；Firefox 下拖文件夹只会进来空文件列表。
-- 这个前缀路由在 DSH 鉴权层之外（设置页要能直接 fetch），所以**凡是能访问 `127.0.0.1:<端口>` 的本机进程都能读写整个库**。库是本机私有数据，别放密钥。
+- 这个前缀路由在 DSH 自己的路由表之外，所以插件自己过一道访问检查（`connection.requestRejection()`，没有该服务时退回本机 Host/Origin 检查）：**浏览器里打开的外站页面调不到这些接口**；但本机其它进程直接连 `127.0.0.1:<端口>` 仍可读写整个库。库是本机私有数据，别放密钥。
 
 ## 致谢与许可
 

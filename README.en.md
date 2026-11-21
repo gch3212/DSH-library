@@ -122,7 +122,7 @@ Item fields: `id`, `name`, `ext`, `mime`, `size`, `sha256`, `kind`, `createdAt`,
 
 ## HTTP API
 
-Prefix `/dsh-local-library`, same-origin, no auth (it sits outside DSH's auth layer):
+Prefix `/dsh-local-library`. These routes live outside DSH's own route table, so every request passes an access check first (`connection.requestRejection()`; when that service is missing it falls back to a local Host/Origin check) — a cross-site page in your browser gets a 403:
 
 `GET /list?q=&limit=`, `GET /tree`, `GET /stats`, `GET|PUT /config`, `POST /upload?name=&dup=&tags=&folder=&path=&remark=`, `PATCH /item?id=`, `DELETE /item?id=`, `GET /download?id=`, `POST /bundle`, `POST /reindex?all=1`, `GET /recent?limit=`, `POST /touch?id=`, `GET /preview?id=&offset=&maxChars=`, `GET /workfiles?limit=`, `PUT /file?id=`, `POST /delete` (soft: moves to trash), `GET /trash`, `POST /restore`, `POST /purge`, `POST /trash/empty`, `POST /remark`, `POST /open-path?id=`, `POST /import-path`, `POST /folder`, `PATCH /folder?id=`, `DELETE /folder?id=&recursive=0|1`, `POST /move`.
 
@@ -174,7 +174,7 @@ Suites: `api.e2e` (real HTTP server over every route), `tools.e2e` (tool schemas
 - Work-generated files come from session logs on this machine (96 MiB / 200 sessions caps); deleted files are listed but marked missing.
 - Jump-to-chat needs the `uiWorkspace` client service; without it the button degrades to a notice.
 - Folder drops need `webkitGetAsEntry()` (Chromium-based DSH web UI).
-- The route prefix sits outside the auth layer: anything that can reach `127.0.0.1:<port>` can read and write the library. Don't store secrets in it.
+- The route prefix sits outside DSH's route table, so the plugin applies its own access check (`connection.requestRejection()`, or a local Host/Origin check when unavailable): **a web page open in your browser cannot call these routes**, but other local processes that connect straight to `127.0.0.1:<port>` still can. Don't store secrets in the library.
 
 ## Credits & license
 

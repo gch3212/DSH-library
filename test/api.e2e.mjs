@@ -367,6 +367,76 @@ await writeFile(
   check('空选择的 purge → 400', emptyPurge.status === 400 && emptyPurge.json?.error === 'empty-selection', emptyPurge.json)
 }
 
+// 15) 访问检查：同源页面照常，外站页面/N 外部 Host 一律 403
+{
+  // 直接用 http.request，才能自己写 Host / Origin 头（fetch 不让改 Host）。
+  const raw = (headers) =>
+    new Promise((resolve, reject) => {
+      const request = http.request({ host: '127.0.0.1', port: server.address().port, path: '/dsh-local-library/stats', method: 'GET', headers }, (response) => {
+        let text = ''
+        response.setEncoding('utf8')
+        response.on('data', (chunk) => {
+          text += chunk
+        })
+        response.on('end', () => {
+          let json = null
+          try {
+            json = JSON.parse(text)
+          } catch {
+            json = null
+          }
+          resolve({ status: response.statusCode, json })
+        })
+      })
+      request.on('error', reject)
+      request.end()
+    })
+
+  const sameOrigin = await raw({ host: `127.0.0.1:${server.address().port}`, origin: `http://127.0.0.1:${server.address().port}` })
+  check('同源请求放行', sameOrigin.status === 200, sameOrigin)
+
+  const evilHost = await raw({ host: 'evil.example.com' })
+  check('外部 Host → 403 bad-host', evilHost.status === 403 && evilHost.json?.reason === 'bad-host', evilHost.json)
+
+  const evilOrigin = await raw({ host: `127.0.0.1:${server.address().port}`, origin: 'https://evil.example.com' })
+  check('外站 Origin → 403 cross-origin', evilOrigin.status === 403 && evilOrigin.json?.reason === 'cross-origin', evilOrigin.json)
+
+  const wrongPort = await raw({ host: `127.0.0.1:${server.address().port}`, origin: 'http://127.0.0.1:1' })
+  check('Origin 端口不符 → 403 cross-origin', wrongPort.status === 403 && wrongPort.json?.reason === 'cross-origin', wrongPort.json)
+}
+
+// 16) 有 connection 服务时，以它为准（这里模拟会话缺失 → 401）
+{
+  const guarded = []
+  const guardedCtx = {
+    effect: (fn) => {
+      const off = fn()
+      if (typeof off === 'function') off()
+    },
+    webServer: { register: (definition) => guarded.push(definition) },
+    tools: { register: () => () => {} },
+    systemPrompt: { section: () => () => {} },
+    get: (name) => (name === 'connection' ? { requestRejection: (req) => (String(req.headers['x-session'] || '') === 'ok' ? undefined : 401) } : undefined)
+  }
+  const fresh = await import(`../lib/index.js?guard=${Date.now()}`)
+  fresh.apply(guardedCtx, {})
+  const guardedServer = http.createServer((req, res) => guarded[0].handler(req, res))
+  await new Promise((resolve) => guardedServer.listen(0, '127.0.0.1', resolve))
+  const port = guardedServer.address().port
+  const hit = (headers) =>
+    new Promise((resolve, reject) => {
+      const request = http.request({ host: '127.0.0.1', port, path: '/dsh-local-library/stats', method: 'GET', headers }, (response) => {
+        response.resume()
+        response.on('end', () => resolve(response.statusCode))
+      })
+      request.on('error', reject)
+      request.end()
+    })
+  check('connection 拒绝 → 401', (await hit({ host: `127.0.0.1:${port}` })) === 401)
+  check('connection 放行 → 200', (await hit({ host: `127.0.0.1:${port}`, 'x-session': 'ok' })) === 200)
+  guardedServer.close()
+}
+
 server.close()
 console.log(`\n${failures.length === 0 ? '全部通过' : `失败 ${failures.length} 项：${failures.join(' / ')}`}`)
 process.exit(failures.length === 0 ? 0 : 1)
