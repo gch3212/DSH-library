@@ -252,6 +252,19 @@ try {
     ),
   )
 
+  // 真实 PDF（LaTeX/AIP 那种）会把一句话拆成很多带 Tm 坐标的片段，
+  // 同一基线上的片段必须拼成一行，只有真正换行才断行。
+  fixtures.pdfRuns = path.join(tempDirectory, 'runs.pdf')
+  await fsp.writeFile(
+    fixtures.pdfRuns,
+    makeRawPdfBuffer(
+      'BT /F1 14 Tf 14 0 0 14 72 744.9 Tm (Synthesized multiwall MoS) Tj ' +
+        '10.5 0 0 9.3 236.5 742.6 Tm (2) Tj ' +
+        '14 0 0 14 244.5 744.9 Tm (nanotube) Tj ' +
+        '0 -1.2189 TD (Second line of body) Tj ET',
+    ),
+  )
+
   fixtures.brokenDocx = path.join(tempDirectory, 'broken.docx')
   fixtures.brokenPdf = path.join(tempDirectory, 'broken.pdf')
   await fsp.writeFile(fixtures.brokenDocx, Buffer.alloc(4096, 0xab))
@@ -356,6 +369,18 @@ try {
     assert.ok(result.text.includes('Second line'))
     assert.ok(result.text.includes("It's (fine) A"), `escape decoding failed: ${JSON.stringify(result.text)}`)
     assert.ok(result.text.includes('Quoted operator'), `double-quote operator failed: ${JSON.stringify(result.text)}`)
+  })
+
+  await test('pdf: runs on one baseline join into one line, Td really breaks the line', async () => {
+    const result = await extractText({ path: fixtures.pdfRuns, name: 'runs.pdf' })
+    assert.equal(result.kind, 'pdf')
+    assert.ok(
+      /Synthesized multiwall MoS2 nanotube/.test(result.text),
+      `subscript must stay attached: ${JSON.stringify(result.text)}`,
+    )
+    const firstLine = result.text.split('\n')[0]
+    assert.ok(firstLine.includes('nanotube'), `title should be a single line: ${JSON.stringify(firstLine)}`)
+    assert.ok(result.text.includes('Second line of body'), 'Td must still start a new line')
   })
 
   await test('corrupt .docx/.pdf return empty text without throwing', async () => {
