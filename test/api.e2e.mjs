@@ -8,7 +8,7 @@
  *   "/d/Apps/Deepseek Harness/DeepSeek Harness.exe" test/api.e2e.mjs
  */
 import http from 'node:http'
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
 import { stat } from 'node:fs/promises'
@@ -222,6 +222,38 @@ const sessionRows = work.json?.sessions || []
 const sessionRow = sessionRows.find((row) => row.id === sessionId)
 check('sessions 里有这条会话', Boolean(sessionRow), sessionRows)
 check('会话 label 用标题', typeof sessionRow?.label === 'string' && sessionRow.label.includes('季度汇报'), sessionRow?.label)
+
+// 会话里交付过、但磁盘上已经被删掉的文件，不该再挂在这里（与会话/磁盘的真实状态对齐）。
+await unlink(writtenPath)
+const workAfter = await call('GET', '/workfiles?limit=5')
+const rowsAfter = workAfter.json?.files || []
+check('磁盘文件被删后只剩 1 条', rowsAfter.length === 1, rowsAfter.map((row) => row.name))
+check('被删的文件不再出现', !rowsAfter.some((row) => row.path === writtenPath), rowsAfter.map((row) => row.path))
+check('还在的文件仍能列出', rowsAfter[0]?.path === deliveredPath, rowsAfter[0]?.path)
+
+// 与 DSH 的会话状态同步：会话被归档（workspace.json 的 archivedSessionIds）后，它产出的文件也不该再出现。
+await mkdir(join(home, 'storages'), { recursive: true })
+await writeFile(
+  join(home, 'storages', 'workspace.json'),
+  JSON.stringify({ global: { archivedSessionIds: [sessionId] }, tables: { workspaces: {} } })
+)
+const workArchived = await call('GET', '/workfiles?limit=5')
+check('会话归档后不再列出它的文件', (workArchived.json?.files || []).length === 0, workArchived.json?.files)
+check('归档后 sessions 里也没有它', !(workArchived.json?.sessions || []).some((row) => row.id === sessionId), workArchived.json?.sessions)
+
+// 会话被删除（没登记进任何工作区）同理：只剩日志目录也没用。
+await writeFile(
+  join(home, 'storages', 'workspace.json'),
+  JSON.stringify({ global: { archivedSessionIds: [] }, tables: { workspaces: { w1: { sessionIds: ['session-other'] } } } })
+)
+const workOrphan = await call('GET', '/workfiles?limit=5')
+check('未登记的会话不再列出', (workOrphan.json?.files || []).length === 0, workOrphan.json?.files)
+
+// 恢复成「这个会话还活着」，后面的用例不受影响。
+await writeFile(
+  join(home, 'storages', 'workspace.json'),
+  JSON.stringify({ global: { archivedSessionIds: [] }, tables: { workspaces: { w1: { sessionIds: [sessionId] } } } })
+)
 
 /* ── 12. 批量操作与就地编辑 ─────────────────────────────── */
 {
