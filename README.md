@@ -74,23 +74,30 @@ pwsh -File uninstall.ps1
 pwsh -File uninstall.ps1 -PurgeData
 ```
 
-### 方式二：tarball（不需要 git、不需要联网）
+### 方式二：tarball（不需要 git、不需要整份仓库）
+
+从 [Releases](https://github.com/gch3212/DSH-library/releases/latest) 下两个文件，放在同一个目录：
+
+- `install.ps1`
+- `DSH-library.tgz`（就是打好的插件包）
+
+然后一条命令：
 
 ```powershell
-git clone https://github.com/gch3212/DSH-library.git
-cd DSH-library
-pwsh -File scripts/install-tarball.ps1
+pwsh -File install.ps1 -Tarball .\DSH-library.tgz
 ```
 
-脚本先 `pnpm pack` 出 `DSH-library-<版本>.tgz`（默认放在 `$DSH_HOME\plugin-dist`），再用 DSH 自带的 node + pnpm 把它 `add` 进 profile。装进去的是**真拷贝**，lockfile 里记的是 tarball 的 `file:` + `integrity`，全程不需要 `git`，也不需要访问 npm registry。
+`-Tarball` 模式不建 junction，而是用 DSH 自带的 node + pnpm 把 tgz 装成 profile 里的**真拷贝**，lockfile 里记的是 `file:` + `integrity`。全程不需要 `git`，也不访问 npm registry，装完重启 DSH 就能用。
 
 什么时候用它：
 
 - 这台机器的 **DSH 启动的 pnpm 找不到 `git`**（这时市场按地址更新会报 `ERR_PNPM_GIT_FETCH_FAILED`）；
-- 想要“市场装出来那种拷贝”，而不是指向工作区的链接。
+- 想要“市场装出来那种拷贝”，而不是指向工作区的链接；
+- 只是想试一下，不想 clone 仓库。
 
-代价：**改完代码要重跑一次脚本**（再重启 DSH），不像方式一那样重启即生效。脚本幂等，重复跑会用当前版本覆盖；它会先摘掉上一次留下的 junction，免得 pnpm 认为“已经是最新的”而不换。
+代价：**改代码要重新拿一份 tgz 重装**（再重启 DSH），不像方式一那样重启即生效。
 
+如果你是改这个仓库的人，出包可以直接跑 `pwsh -File scripts/install-tarball.ps1`：它会现打一个 `DSH-library-<版本>.tgz` 放进 `$DSH_HOME\plugin-dist`，再把这个 profile 里那份换成新的拷贝。
 ### 方式三：交给插件市场
 
 本仓库是标准 npm 包（`main` + `exports` + `dsh.bundle.patch` + `dsh.client`），在市场里按地址安装即可：
@@ -149,6 +156,7 @@ $DSH_HOME\local-library\          # 默认 %APPDATA%\dsh-desktop\harness\local-l
 | `src/panel.part.js` | 客户端源码：侧边栏面板那一半（文件树 / 拖拽 / 备注 / 预览 / 工作文件） |
 | `scripts/splice-panel.mjs` | 把上面两个 src 拼成 `lib/client.js`；`--check` 只校验是否同步 |
 | `scripts/install-tarball.ps1` | 打成 tgz 装进 profile（不需要 git；改完代码重跑一次） |
+| `scripts/make-release.ps1` | 发 GitHub Release，把 `DSH-library.tgz` 与 `install.ps1` 挂成固定下载名 |
 | `scripts/make-icon.py` | 用 Pillow 把 `icon.svg` 的形状重绘成 `assets/icon-180.png`（市场卡片只认位图） |
 | `lib/extract.js` | 零依赖文本抽取：docx/xlsx/pptx 用自研 ZIP 读取器，pdf 走 FlateDecode |
 | `lib/pdftext.js` | 可选：调本机 PyMuPDF 抽 PDF（中文更稳），探测不到就跳过 |
@@ -245,6 +253,16 @@ node scripts/splice-panel.mjs --check  # 只校验是否同步（CI 跑这个）
 ```
 
 改宿主半侧（`lib/*.js`）不用拼，但**重启 DSH Desktop 才生效**（宿主没有 HMR）；改客户端半侧刷新页面即可（前提是这次是重启后第一次加载）。
+
+发版（改完版本号、`git tag -a v<版本>` 推上去之后）：
+
+```powershell
+pwsh -File scripts/install-tarball.ps1     # 先出包并装进本机 profile
+pwsh -File scripts/make-release.ps1 -Token <GitHub token>
+```
+
+`make-release.ps1` 会把 asset 名固定成 `DSH-library.tgz` 与 `install.ps1`，所以
+`releases/latest/download/DSH-library.tgz` 永远指向最新一版，README 里的下载链接不用跟着版本改。
 
 自检：
 

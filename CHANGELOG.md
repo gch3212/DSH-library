@@ -1,5 +1,11 @@
 # 更新记录
 
+## 0.5.12 — 2026-11-22 · 装上就能用：`install.ps1 -Tarball`
+
+- `install.ps1` 新增 `-Tarball <tgz>`：不建 junction，直接用 DSH 自带的 node + pnpm 把打好的 tgz 装成 profile 里的真拷贝。于是「下载 `install.ps1` + `DSH-library.tgz`，跑一条命令」就能装完，不需要 `git`，也不需要整份仓库。
+- 这个模式会先摘掉 profile 里已有的那份（链接或拷贝）、清掉 lockfile 里对应的记录，再 `pnpm add file:<tgz>` —— 否则 pnpm 会因为「同名同版本」直接跳过，装进去还是旧的（0.5.4 踩过）。
+- 自检那一步：没有 `.desktop-bin\node.cmd` 的机器改成退回 DSH 运行时里的 `node.exe`，不再整段跳过。
+- README「方式二」从「先 clone 再 `install-tarball.ps1`」改成真正的「下两个文件 + 一条命令」，中英文同步。
 ## 0.5.11 — 2026-11-22 · 每个 HTTP 请求都过 DSH 访问检查
 
 - 路由挂在 webServer 上、在 DSH 路由表之外，因此自己补一道门：`ctx.get("connection").requestRejection(req)`（DSH 的 Host/Origin 检查 + 浏览器鉴权），返回 401/403 就照抄状态码回 `{ error: "forbidden", reason }`。

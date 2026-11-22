@@ -1,20 +1,29 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  把 DSH-library 装进 DSH Desktop 的 profile（建 junction + cordis.patch.yml insert 一行）。
+  把 DSH-library 装进 DSH Desktop 的 profile。
 
 .DESCRIPTION
-  幂等：已经装过就只做自检。不碰 package.json / pnpm-lock.yaml / generation 投影。
-  装完需要重启 DSH Desktop（宿主半侧）并刷新页面（客户端半侧）。
+  两种模式：
+    · 默认（junction）：把当前目录这份源码链接进 profile\node_modules，改代码重启即生效。
+    · -Tarball <tgz>：不建链接，把打好的 tgz 用 DSH 自带的 pnpm 装成真拷贝 —— 适合手头
+      只有 install.ps1 和 tgz 两个文件的人（不需要 git，也不需要整份仓库）。
+  两种模式都会把包名登记进 profile 的 dsh.profile.bundles（DSH 按这个列表加载插件）。
+  幂等：已经装过就只做自检。装完需要重启 DSH Desktop（宿主半侧）并刷新页面（客户端半侧）。
 
 .EXAMPLE
   pwsh -File install.ps1
   # profile 会自动找（$DSH_HOME\profiles\desktop 等）；找不到时再手动指定：
   pwsh -File install.ps1 -ProfileRoot 'D:\DSH Data\Home\profiles\desktop'
+
+.EXAMPLE
+  pwsh -File install.ps1 -Tarball .\DSH-library.tgz
+  # 只有 install.ps1 和 tgz 时用这条：不建 junction，装成拷贝
 #>
 [CmdletBinding()]
 param(
-  [string]$ProfileRoot
+  [string]$ProfileRoot,
+  [string]$Tarball
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,6 +33,97 @@ $PackageDir = $PSScriptRoot
 function Fail([string]$Message) {
   Write-Host "× $Message" -ForegroundColor Red
   exit 1
+}
+
+# 在 DSH 自带运行时里找一个文件（-Tarball 模式要用它的 node + pnpm 把 tgz 装进 profile）
+function Find-RuntimeFile([string]$Filter, [string]$Pattern) {
+  $roots = [Collections.Generic.List[string]]::new()
+  if ($env:DSH_HOME) { $roots.Add((Join-Path $env:DSH_HOME 'dsh-runtimes')) }
+  if ($env:USERPROFILE) { $roots.Add((Join-Path $env:USERPROFILE '.dsh\dsh-runtimes')) }
+  $roots.Add((Join-Path $env:APPDATA 'dsh-desktop\harness\dsh-runtimes'))
+  foreach ($root in $roots) {
+    if (-not (Test-Path -LiteralPath $root)) { continue }
+    $hit = Get-ChildItem -LiteralPath $root -Recurse -File -Filter $Filter -ErrorAction SilentlyContinue |
+      Where-Object { $_.FullName -match $Pattern } | Sort-Object FullName | Select-Object -First 1
+    if ($hit) { return $hit.FullName }
+  }
+  return $null
+}
+
+function Resolve-NodeExe {
+  $found = Find-RuntimeFile 'node.exe' '\\dependencies\\node\\'
+  if ($found) { return $found }
+  if ($env:DSH_DESKTOP_NODE_EXECUTABLE -and (Test-Path -LiteralPath $env:DSH_DESKTOP_NODE_EXECUTABLE)) {
+    return $env:DSH_DESKTOP_NODE_EXECUTABLE
+  }
+  $onPath = Get-Command node.exe -ErrorAction SilentlyContinue
+  if ($onPath) { return $onPath.Source }
+  return $null
+}
+
+function Resolve-PnpmScript {
+  return (Find-RuntimeFile 'pnpm.mjs' '\\pnpm\\bin\\')
+}
+
+# -Tarball 模式：把 tgz 装成 profile/node_modules/<包名> 里的真拷贝（不建 junction）
+function Install-FromTarball([string]$TgzPath) {
+  if (-not $TgzPath) { Fail "-Tarball 需要一个 .tgz 文件路径。" }
+  if (-not (Test-Path -LiteralPath $TgzPath)) { Fail "找不到 tarball：$TgzPath" }
+  $tgz = (Resolve-Path -LiteralPath $TgzPath).Path
+  if (-not ($tgz.ToLower().EndsWith('.tgz') -or $tgz.ToLower().EndsWith('.tar.gz'))) {
+    Fail "不是 .tgz / .tar.gz 文件：$tgz"
+  }
+  $node = Resolve-NodeExe
+  if (-not $node) {
+    Fail "找不到 node.exe。请先装好 DSH Desktop，或用 $env:DSH_DESKTOP_NODE_EXECUTABLE 指定。"
+  }
+  $pnpm = Resolve-PnpmScript
+  if (-not $pnpm) {
+    Fail "找不到 DSH 自带的 pnpm.mjs（<DSH_HOME>\dsh-runtimes\...\dependencies\pnpm\bin\pnpm.mjs）。"
+  }
+
+  # 1) 先摘掉已有的那一份，否则 pnpm 会因为「同名同版本」直接跳过，装进去的还是旧的
+  if (Test-Path -LiteralPath $LinkPath) {
+    $item = Get-Item -LiteralPath $LinkPath -Force
+    if ($item.LinkType) {
+      & cmd /c rmdir "$LinkPath" | Out-Null
+      if (Test-Path -LiteralPath $LinkPath) { Fail "摘不掉旧链接：$LinkPath（先手动删掉再重跑）" }
+      Write-Host "- 摘掉了旧链接 $PackageName" -ForegroundColor Yellow
+    } else {
+      Remove-Item -LiteralPath $LinkPath -Recurse -Force
+      Write-Host "- 删掉了旧拷贝 $PackageName" -ForegroundColor Yellow
+    }
+  }
+
+  # 2) 清掉 lockfile 里这个名字的记录（importer 三条 + packages/snapshots 块），逼 pnpm 重新落盘
+  $lockPath = Join-Path $ProfileRoot 'pnpm-lock.yaml'
+  if (Test-Path -LiteralPath $lockPath) {
+    $lockRaw = [IO.File]::ReadAllText($lockPath)
+    $before = $lockRaw.Length
+    $lockRaw = [regex]::Replace($lockRaw, ('(?m)^ {6}' + [regex]::Escape($PackageName) + ':\r?\n(?: {8}[^\n]*\r?\n)*'), '')
+    $lockRaw = [regex]::Replace($lockRaw, ('(?m)^ {2}' + [regex]::Escape($PackageName) + '@[^\n]*:\r?\n(?: {4}[^\n]*\r?\n)*'), '')
+    if ($lockRaw.Length -ne $before) {
+      $backup = "$lockPath.bak-$PackageName-tarball-" + (Get-Date -Format 'yyyyMMdd-HHmmss')
+      Copy-Item -LiteralPath $lockPath -Destination $backup
+      [IO.File]::WriteAllText($lockPath, $lockRaw, (New-Object Text.UTF8Encoding($false)))
+      Write-Host "- 清掉了 lockfile 里的旧记录（备份：$backup）" -ForegroundColor Yellow
+    }
+  }
+
+  # 3) 真的装上
+  $spec = 'file:' + ($tgz -replace '\\', '/')
+  Push-Location -LiteralPath $ProfileRoot
+  try {
+    & $node $pnpm add $spec --ignore-scripts --prefer-offline --config.confirmModulesPurge=false
+    if ($LASTEXITCODE -ne 0) { Fail "pnpm add 失败（退出码 $LASTEXITCODE）" }
+  } finally {
+    Pop-Location
+  }
+  if (-not (Test-Path -LiteralPath (Join-Path $LinkPath "lib\index.js"))) {
+    Fail "装完了但 $LinkPath\lib\index.js 不存在 —— tgz 里可能不是这个包。"
+  }
+  $installed = Get-Content -LiteralPath (Join-Path $LinkPath "package.json") -Raw | ConvertFrom-Json
+  Write-Host "+ 装好了 $($installed.name) $($installed.version)（tarball 拷贝）" -ForegroundColor Green
 }
 
 # 自动找 profile：优先 $DSH_HOME\profiles\{desktop,web}，再看老布局 %APPDATA%\dsh-desktop\harness\profiles\*
@@ -58,10 +158,13 @@ $PatchPath = Join-Path $ProfileRoot 'cordis.patch.yml'
 if (-not (Test-Path -LiteralPath $PatchPath)) {
   Fail "找不到 $PatchPath —— ProfileRoot 传错了吗？"
 }
-if (-not (Test-Path -LiteralPath (Join-Path $PackageDir 'lib\index.js'))) {
-  Fail "本目录下没有 lib\index.js，请在包根目录运行这个脚本。"
+if (-not $Tarball -and -not (Test-Path -LiteralPath (Join-Path $PackageDir 'lib\index.js'))) {
+  Fail "本目录下没有 lib\index.js。请在包根目录运行，或改用 -Tarball <tgz> 直接装打包好的文件。"
 }
 
+if ($Tarball) {
+  Install-FromTarball -TgzPath $Tarball
+} else {
 # 1) junction：让包名在这个 profile 里解析得到
 #    junction 的 Target 在部分 PowerShell 版本里带 \??\ 前缀，直接 Resolve-Path 会报
 #    「找不到驱动器。名为 Global\D 的驱动器不存在」，所以先规整路径再比。
@@ -84,7 +187,8 @@ if (Test-Path -LiteralPath $LinkPath) {
     } catch { $sameTarget = $false }
   }
   if ($sameTarget) {
-    Write-Host "= junction 已存在：$LinkPath" -ForegroundColor DarkGray
+    $kind = if ($item.LinkType) { 'junction' } else { '拷贝' }
+    Write-Host "= 已有的 $kind 就是这份代码，跳过：$LinkPath" -ForegroundColor DarkGray
     $linked = $true
   } else {
     Fail "$LinkPath 已存在但指向别处（$target）。先删掉它再重跑。"
@@ -96,6 +200,7 @@ if (-not $linked) {
   & cmd /c mklink /J "$LinkPath" "$PackageDir" | Out-Null
   if ($LASTEXITCODE -ne 0) { Fail "mklink /J 失败（退出码 $LASTEXITCODE）" }
   Write-Host "+ junction -> $LinkPath" -ForegroundColor Green
+}
 }
 
 # 2) 登记到 profile 的 dsh.profile.bundles —— DSH 按这个列表加载插件，
@@ -170,6 +275,8 @@ if (Test-Path -LiteralPath $PatchPath) {
 #    注意：--input-type=module + -e 在这台机器的 electron-as-node 垫片里不输出，
 #    所以落一个临时 .mjs 跑。
 $node = Join-Path $env:APPDATA 'dsh-desktop\harness\.desktop-bin\node.cmd'
+if (-not (Test-Path -LiteralPath $node)) { $node = Resolve-NodeExe }
+$env:ELECTRON_RUN_AS_NODE = '1'
 $pkgJson = Join-Path $ProfileRoot 'package.json'
 if ((Test-Path -LiteralPath $node) -and (Test-Path -LiteralPath $pkgJson)) {
   $probe = Join-Path ([IO.Path]::GetTempPath()) ("dsh-ll-probe-{0}.mjs" -f ([guid]::NewGuid().ToString('N')))

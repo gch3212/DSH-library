@@ -52,18 +52,22 @@ pwsh -File uninstall.ps1             # library data is kept
 pwsh -File uninstall.ps1 -PurgeData  # also delete $DSH_HOME\local-library
 ```
 
-**Option 2 — tarball (no git, no network)**
+**Option 2 — tarball (no git, no full checkout)**
+
+Download two files from [Releases](https://github.com/gch3212/DSH-library/releases/latest) into one folder:
+
+- `install.ps1`
+- `DSH-library.tgz`
+
+Then run:
 
 ```powershell
-git clone https://github.com/gch3212/DSH-library.git
-cd DSH-library
-pwsh -File scripts/install-tarball.ps1
+pwsh -File install.ps1 -Tarball .\DSH-library.tgz
 ```
 
-The script runs `pnpm pack` to produce `DSH-library-<version>.tgz` (by default under `$DSH_HOME\plugin-dist`), then installs it into the profile with the node and pnpm bundles DSH ships. What lands in `node_modules` is a real copy, and the lockfile records the tarball's `file:` spec plus `integrity` — no `git`, no npm registry access.
+With `-Tarball`, no junction is created: DSH's bundled node + pnpm install the tarball as a real copy in the profile (lockfile records `file:` + `integrity`). No `git`, no npm registry, restart DSH afterwards.
 
-Use it when the pnpm DSH spawns cannot see `git` (market updates then fail with `ERR_PNPM_GIT_FETCH_FAILED`), or when you want a market-style copy rather than a link back to the working tree. The trade-off: **re-run the script after editing the code** and restart DSH; Option 1 picks up edits on restart alone. The script is idempotent, strips a previous junction first (otherwise pnpm reports "already up to date" and keeps the link), and re-installs over the old copy.
-
+Use it when the pnpm that DSH spawns cannot find `git` (that is what makes market updates fail with `ERR_PNPM_GIT_FETCH_FAILED`), or when you want the copy layout rather than a link. Trade-off: code changes need a fresh tarball and another install. Maintainers can produce one with `pwsh -File scripts/install-tarball.ps1`.
 **Option 3 — plugin market**
 
 The repo is a standard npm package (`main` + `exports` + `dsh.bundle.patch` + `dsh.client`), so the market can install it by address:
@@ -159,6 +163,15 @@ node scripts/splice-panel.mjs          # regenerate
 node scripts/splice-panel.mjs --check  # verify sync (CI)
 node test/run-all.mjs                  # all suites
 ```
+
+Release (after bumping the version and pushing the tag):
+
+```powershell
+pwsh -File scripts/install-tarball.ps1     # build the tarball and install it locally
+pwsh -File scripts/make-release.ps1 -Token <GitHub token>
+```
+
+Asset names are fixed (`DSH-library.tgz`, `install.ps1`), so `releases/latest/download/DSH-library.tgz` always points at the newest build.
 
 Host-side changes need a DSH Desktop restart; client-side changes need a page reload (after a restart that picked up the new manifest).
 
